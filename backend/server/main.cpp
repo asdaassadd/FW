@@ -155,6 +155,11 @@ std::string http_post_json(const std::string& host_str, int port, bool https, co
     std::string resp;
     HINTERNET hSession = WinHttpOpen(L"Svc", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession) { std::cerr << "WinHttpOpen failed: " << GetLastError() << std::endl; return resp; }
+    
+    // Enable TLS 1.2 (0x00000800) for modern API compatibility
+    DWORD protocols = 0x00000800; 
+    WinHttpSetOption(hSession, 134, &protocols, sizeof(protocols)); // 134 = WINHTTP_OPTION_SECURE_PROTOCOLS
+
     HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), (INTERNET_PORT)port, 0);
     if (!hConnect) { std::cerr << "WinHttpConnect failed: " << GetLastError() << std::endl; WinHttpCloseHandle(hSession); return resp; }
     DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
@@ -168,9 +173,15 @@ std::string http_post_json(const std::string& host_str, int port, bool https, co
     }
 
     BOOL ok = WinHttpSendRequest(hRequest, headers.c_str(), (DWORD)headers.size(), (LPVOID)body.data(), (DWORD)body.size(), (DWORD)body.size(), 0);
-    if (!ok) { std::cerr << "WinHttpSendRequest failed: " << GetLastError() << std::endl; }
+    if (!ok) { 
+        std::cerr << "WinHttpSendRequest failed: " << GetLastError() << std::endl; 
+        resp = "{\"error\": {\"message\": \"WinHttpSendRequest failed: " + std::to_string(GetLastError()) + "\"}}";
+    }
     if (ok) ok = WinHttpReceiveResponse(hRequest, NULL);
-    if (!ok) { std::cerr << "WinHttpReceiveResponse failed: " << GetLastError() << std::endl; }
+    if (!ok && resp.empty()) { 
+        std::cerr << "WinHttpReceiveResponse failed: " << GetLastError() << std::endl; 
+        resp = "{\"error\": {\"message\": \"WinHttpReceiveResponse failed: " + std::to_string(GetLastError()) + "\"}}";
+    }
     if (ok) {
         for (;;) {
             DWORD avail = 0;

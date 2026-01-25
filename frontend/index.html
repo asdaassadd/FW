@@ -165,52 +165,14 @@
             flex-grow: 1;
             padding: 30px;
             background-color: #ffffff;
-            background-image: 
-                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(0deg, transparent 24%, rgba(0, 0, 0, 0.03) 25%, rgba(0, 0, 0, 0.03) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, 0.03) 75%, rgba(0, 0, 0, 0.03) 76%, transparent 77%, transparent),
-                linear-gradient(90deg, transparent 24%, rgba(0, 0, 0, 0.03) 25%, rgba(0, 0, 0, 0.03) 26%, transparent 27%, transparent 74%, rgba(0, 0, 0, 0.03) 75%, rgba(0, 0, 0, 0.03) 76%, transparent 77%, transparent);
-            background-size: 100% 100%, 60px 60px, 60px 60px;
             position: relative;
             overflow: hidden;
             border-radius: 0 8px 8px 0;
         }
         
-        /* 3D Digital Terrain Effect */
-        .content-area::before {
-            content: "";
-            position: absolute;
-            bottom: -100px;
-            left: -50%;
-            width: 200%;
-            height: 400px;
-            background: 
-                linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-            background-size: 40px 40px;
-            transform: perspective(600px) rotateX(60deg) scale(1.5);
-            mask-image: linear-gradient(to top, rgba(0,0,0,0.6), transparent 80%);
-            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.6), transparent 80%);
-            pointer-events: none;
-            z-index: 0;
-        }
+        /* 3D Digital Terrain Effect removed */
+        /* Abstract Digital Hills/Topography removed */
 
-        /* Abstract Digital Hills/Topography */
-        .content-area::after {
-            content: "";
-            position: absolute;
-            top: 0; right: 0;
-            width: 300px;
-            height: 300px;
-            background: repeating-radial-gradient(
-                circle at 100% 0%, 
-                transparent 0, 
-                transparent 20px, 
-                rgba(0, 0, 0, 0.03) 21px, 
-                rgba(0, 0, 0, 0.03) 22px
-            );
-            pointer-events: none;
-            z-index: 0;
-        }
 
         .sub-section {
             position: relative;
@@ -279,17 +241,8 @@
             box-shadow: inset 0 0 20px rgba(0, 102, 204, 0.05);
             border-radius: 4px;
         }
-        /* Grid overlay for map */
-        #map-area::before {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: 
-                linear-gradient(rgba(0, 102, 204, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 102, 204, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            pointer-events: none;
-        }
+        /* Grid overlay removed */
+
 
         .log { 
             background: #fff; 
@@ -632,7 +585,7 @@
 
         /* Chat Specific Styles */
         /* Hide Sea Map when Chat tab is active */
-        #tab-chat.active ~ #seaMap {
+        #tab-chat.active ~ #map-area {
             display: none !important;
         }
 
@@ -888,29 +841,29 @@
                     <p style="color: #666; font-size: 14px; margin-bottom: 15px;">输入圆心坐标、半径、起点和终点。</p>
                     
                     <div class="coordinates-group">
-                        <div class="form-grid">
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
                             <div class="form-group">
-                                <label>起点 纬度</label>
-                                <input type="number" id="start-lat" value="39.9042">
+                                <label>起点</label>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="start-lat" placeholder="纬度">
+                                    <input type="number" id="start-lon" placeholder="经度">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('start-lat', 'start-lon')">选点</button>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>起点 经度</label>
-                                <input type="number" id="start-lon" value="116.4074">
-                            </div>
-                            <div class="form-group">
-                                <label>终点 纬度</label>
-                                <input type="number" id="end-lat" value="31.2304">
-                            </div>
-                            <div class="form-group">
-                                <label>终点 经度</label>
-                                <input type="number" id="end-lon" value="121.4737">
+                                <label>终点</label>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="end-lat" placeholder="纬度">
+                                    <input type="number" id="end-lon" placeholder="经度">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('end-lat', 'end-lon')">选点</button>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
                     <h3>障碍物 (圆形)</h3>
-                    <div class="list-header grid-3-cols">
-                        <span>纬度</span><span>经度</span><span>半径(m)</span><span>操作</span>
+                    <div class="list-header" style="display: grid; grid-template-columns: 1fr 1fr 0.5fr 1fr auto; gap: 10px;">
+                        <span>纬度</span><span>经度</span><span>选点</span><span>半径(m)</span><span>操作</span>
                     </div>
                     <div id="obs-list" class="list-container">
                         <!-- Dynamic List -->
@@ -922,13 +875,10 @@
                         <button onclick="planPath()" class="btn-primary">计算路径</button>
                     </div>
                     
-                    <div id="path-result" class="log"></div>
-                    
-                    <div id="map-area">
-                        <!-- Simple Canvas visualization -->
-                        <canvas id="mapCanvas" width="760" height="400"></canvas>
-                    </div>
+                    <div id="path-result" class="log" style="display: none;"></div>
                 </div>
+
+                <!-- Map Area moved to bottom -->
 
                 <!-- Placeholders for other tabs -->
                 <div id="tab-search" class="sub-section">
@@ -936,12 +886,12 @@
                     <div class="coordinates-group">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>区域中心 纬度</label>
-                                <input type="number" id="search-center-lat" value="39.9">
-                            </div>
-                            <div class="form-group">
-                                <label>区域中心 经度</label>
-                                <input type="number" id="search-center-lon" value="116.4">
+                                <label>区域中心</label>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="search-center-lat" placeholder="纬度">
+                                    <input type="number" id="search-center-lon" placeholder="经度">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('search-center-lat', 'search-center-lon')">选点</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>区域宽度 (km)</label>
@@ -976,20 +926,20 @@
                     <div class="coordinates-group">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>起点 纬度</label>
-                                <input type="number" id="search-start-lat" value="39.9">
+                                <label>起点</label>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="search-start-lat" placeholder="纬度">
+                                    <input type="number" id="search-start-lon" placeholder="经度">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('search-start-lat', 'search-start-lon')">选点</button>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>起点 经度</label>
-                                <input type="number" id="search-start-lon" value="116.1">
-                            </div>
-                            <div class="form-group">
-                                <label>终点 纬度</label>
-                                <input type="number" id="search-end-lat" value="39.9">
-                            </div>
-                            <div class="form-group">
-                                <label>终点 经度</label>
-                                <input type="number" id="search-end-lon" value="116.7">
+                                <label>终点</label>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="search-end-lat" placeholder="纬度">
+                                    <input type="number" id="search-end-lon" placeholder="经度">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('search-end-lat', 'search-end-lon')">选点</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -997,8 +947,8 @@
                         <button onclick="showSearchExample()" class="btn-outline">用例</button>
                         <button onclick="planSearchRoute()" class="btn-primary">生成搜索航路</button>
                     </div>
-                    <div id="search-result" class="log"></div>
-                    <canvas id="searchCanvas" width="760" height="400" style="margin-top:15px;"></canvas>
+                    <div id="search-result" class="log" style="display: none;"></div>
+                    <!-- canvas removed -->
                     <h3>结果数组</h3>
                     <div id="search-routes-json" class="log"></div>
                 </div>
@@ -1008,29 +958,47 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>中心 纬度</label>
-                                <input type="number" id="buoy-center-lat" value="39.9">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="buoy-center-lat" value="39.9">
+                                    <input type="number" id="buoy-center-lon" value="116.4">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('buoy-center-lat', 'buoy-center-lon')">选点</button>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>中心 经度</label>
-                                <input type="number" id="buoy-center-lon" value="116.4">
-                            </div>
-                            <div class="form-group">
-                                <label>行数</label>
+                            <div class="form-group" id="group-rows">
+                                <label id="label-rows">行数</label>
                                 <input type="number" id="buoy-rows" value="3">
                             </div>
-                            <div class="form-group">
-                                <label>列数</label>
+                            <div class="form-group" id="group-cols">
+                                <label id="label-cols">列数</label>
                                 <input type="number" id="buoy-cols" value="4">
                             </div>
-                            <div class="form-group">
-                                <label>间距 (m)</label>
+                            <div class="form-group" id="group-radius" style="display:none;">
+                                <label id="label-radius">半径 (m)</label>
+                                <input type="number" id="buoy-radius" value="1000">
+                            </div>
+                            <div class="form-group" id="group-angle" style="display:none;">
+                                <label id="label-angle">角度 (°)</label>
+                                <input type="number" id="buoy-angle" value="0">
+                            </div>
+                            <div class="form-group" id="group-angle-span" style="display:none;">
+                                <label id="label-angle-span">开口角度 (°)</label>
+                                <input type="number" id="buoy-angle-span" value="90">
+                            </div>
+                            <div class="form-group" id="group-spacing">
+                                <label id="label-spacing">间距 (m)</label>
                                 <input type="number" id="buoy-spacing" value="5000">
                             </div>
                             <div class="form-group">
                                 <label>类型</label>
-                                <select id="buoy-type">
-                                    <option value="grid">网格</option>
-                                    <option value="circle">圆形</option>
+                                <select id="buoy-type" onchange="updateBuoyUI()">
+                                    <option value="grid">网格阵型</option>
+                                    <option value="circle">圆形阵型</option>
+                                    <option value="sector">扇形阵型</option>
+                                    <option value="expanding_circle">圆形扩展阵</option>
+                                    <option value="expanding_rect">矩形扩展阵</option>
+                                    <option value="line">直线拦截阵</option>
+                                    <option value="multi_line">多直线阵</option>
+                                    <option value="cross_line">双直线交叉阵</option>
                                 </select>
                             </div>
                         </div>
@@ -1041,9 +1009,9 @@
                         <button onclick="planBuoyRoute()" class="btn-primary">生成投放航路</button>
                     </div>
                     <div id="buoy-result" class="log"></div>
-                    <canvas id="buoyCanvas" width="760" height="300" style="margin-top:15px;"></canvas>
+                    <!-- <canvas id="buoyCanvas" width="760" height="300" style="margin-top:15px;"></canvas> -->
                     <div id="buoy-route-result" class="log"></div>
-                    <canvas id="buoyRouteCanvas" width="760" height="300" style="margin-top:15px;"></canvas>
+                    <!-- <canvas id="buoyRouteCanvas" width="760" height="300" style="margin-top:15px;"></canvas> -->
                 </div>
                 <div id="tab-formation" class="sub-section">
                     <h2><span class="section-icon icon-formation"></span>编队阵型规划</h2>
@@ -1051,26 +1019,37 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>领队纬度</label>
-                                <input type="number" id="formation-leader-lat" value="39.9">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="formation-leader-lat" value="39.9">
+                                    <input type="number" id="formation-leader-lon" value="116.4">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('formation-leader-lat', 'formation-leader-lon')">选点</button>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>领队经度</label>
-                                <input type="number" id="formation-leader-lon" value="116.4">
-                            </div>
-                            <div class="form-group">
-                                <label>数量</label>
+                            <div class="form-group" id="form-group-n">
+                                <label id="label-form-n">数量</label>
                                 <input type="number" id="formation-n" value="6">
                             </div>
-                            <div class="form-group">
-                                <label>间距</label>
+                            <div class="form-group" id="form-group-spacing">
+                                <label id="label-form-spacing">间距 (m)</label>
                                 <input type="number" id="formation-spacing" value="200">
+                            </div>
+                            <div class="form-group" id="form-group-angle" style="display:none;">
+                                <label id="label-form-angle">方向 (°)</label>
+                                <input type="number" id="formation-angle" value="0">
+                            </div>
+                             <div class="form-group" id="form-group-angle-span" style="display:none;">
+                                <label id="label-form-angle-span">夹角 (°)</label>
+                                <input type="number" id="formation-angle-span" value="60">
                             </div>
                             <div class="form-group">
                                 <label>类型</label>
-                                <select id="formation-type">
-                                    <option value="line">线形</option>
-                                    <option value="wedge">楔形</option>
-                                    <option value="circle">圆形</option>
+                                <select id="formation-type" onchange="updateFormationUI()">
+                                    <option value="line">横队 (Line)</option>
+                                    <option value="column">纵队 (Column)</option>
+                                    <option value="wedge">楔形 (Wedge)</option>
+                                    <option value="echelon_right">右梯队 (Echelon R)</option>
+                                    <option value="echelon_left">左梯队 (Echelon L)</option>
+                                    <option value="circle">圆形 (Circle)</option>
                                 </select>
                             </div>
                         </div>
@@ -1083,18 +1062,21 @@
                     </div>
                     
                     <div id="formation-result" class="log"></div>
-                    <canvas id="formationCanvas" width="760" height="300" style="margin-top:15px;"></canvas>
+                    <!-- <canvas id="formationCanvas" width="760" height="300" style="margin-top:15px;"></canvas> -->
                     <div id="formation-route-result" class="log"></div>
-                    <canvas id="formationRouteCanvas" width="760" height="300" style="margin-top:15px;"></canvas>
+                    <!-- <canvas id="formationRouteCanvas" width="760" height="300" style="margin-top:15px;"></canvas> -->
                 </div>
                 <div id="tab-intercept" class="sub-section">
                     <h2><span class="section-icon icon-intercept"></span>拦截航路规划</h2>
                     <div class="coordinates-group">
-                        <h3>目标信息 (红色)</h3>
+                        <h3>目标信息 (蓝色)</h3>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>纬度</label>
-                                <input type="number" id="target-lat" value="39.5">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="target-lat" value="39.5">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('target-lat', 'target-lon')">选点</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>经度</label>
@@ -1112,11 +1094,14 @@
                     </div>
                     
                     <div class="coordinates-group">
-                        <h3>拦截方信息 (蓝色)</h3>
+                        <h3>拦截方信息 (红色)</h3>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>纬度</label>
-                                <input type="number" id="interceptor-lat" value="40.0">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="number" id="interceptor-lat" value="40.0">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px; min-width: 50px;" onclick="pickPoint('interceptor-lat', 'interceptor-lon')">选点</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>经度</label>
@@ -1154,7 +1139,15 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>障碍物 (lat,lon,r;...)</label>
-                                <input type="text" id="intercept-obstacles" value="39.7,116.3,50000">
+                                <input type="text" id="intercept-obstacles" value="39.7,116.3,50000" oninput="updateInterceptPreview()">
+                                <div style="margin-top: 5px; display: flex; gap: 5px; align-items: center;">
+                                    <input type="number" id="obs-add-lat" placeholder="纬度" style="width: 70px;">
+                                    <input type="number" id="obs-add-lon" placeholder="经度" style="width: 70px;">
+                                    <button type="button" class="btn-outline" style="padding:4px 8px;" onclick="pickPoint('obs-add-lat', 'obs-add-lon')">选点</button>
+                                    <input type="number" id="obs-add-rad" placeholder="半径" value="50000" style="width: 70px;">
+                                    <button type="button" class="btn-primary" style="padding:4px 8px;" onclick="addInterceptObstacle()">添加</button>
+                                    <button type="button" class="btn-outline" style="padding:4px 8px;" onclick="document.getElementById('intercept-obstacles').value=''; updateInterceptPreview()">清空</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>多目标 (lat,lon,speed,heading;...)</label>
@@ -1169,18 +1162,12 @@
                     </div>
                     
                     <div id="intercept-result" class="log"></div>
-                    <canvas id="interceptCanvas" width="760" height="400" style="margin-top:15px;"></canvas>
+                    <!-- <canvas id="interceptCanvas" width="760" height="400" style="margin-top:15px;"></canvas> -->
                 </div>
                 <div id="tab-chat" class="sub-section">
                     <div class="chat-main-area">
                         <!-- Floating Suggestions (Top Right) -->
                         <div class="suggestion-float-container" id="chat-suggestions">
-                            <button class="suggestion-chip" onclick="sendSuggestion('什么是抛物线')">
-                                什么是抛物线
-                            </button>
-                            <button class="suggestion-chip" onclick="sendSuggestion('什么是服务器')">
-                                什么是服务器
-                            </button>
                         </div>
 
                         <!-- Chat Messages -->
@@ -1211,7 +1198,10 @@
                         </div>
                     </div>
                 </div>
-                <div id="seaMap" class="sea-map"></div>
+                
+                <div id="map-area">
+                    <div id="seaMap" class="sea-map" style="margin-top:0; height: 100%; border: none;"></div>
+                </div>
             </div>
         </div>
     </div>
