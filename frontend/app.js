@@ -1,18 +1,51 @@
-const API_URL = "http://127.0.0.1:8080/api";
+// Configuration for API URL
+// Priority: URL param 'api' > LocalStorage 'api_url' > Default Localhost
+const urlParams = new URLSearchParams(window.location.search);
+let savedApiUrl = localStorage.getItem('api_url');
+const defaultApiUrl = "http://127.0.0.1:8080/api";
+
+let API_URL = urlParams.get('api') || savedApiUrl || defaultApiUrl;
+
+// If provided in URL, save it for future sessions
+if (urlParams.get('api')) {
+    localStorage.setItem('api_url', API_URL);
+}
+
+// Helper to update API URL from console or UI
+window.setApiUrl = function(url) {
+    if (url && !url.endsWith('/api')) {
+        url = url.replace(/\/+$/, "") + "/api";
+    }
+    localStorage.setItem('api_url', url);
+    alert("后端地址已更新为: " + url + "\n页面将刷新以应用更改。");
+    window.location.href = window.location.pathname; // Reload without query params to use localStorage
+};
 
 // Auto-check connection on load
 (async function checkConnection() {
     try {
+        console.log("Checking connection to:", API_URL);
         const res = await fetch(API_URL);
         if (res.ok) {
             console.log("Server connected successfully.");
+            const loginMsg = document.getElementById('login-msg');
+            if (loginMsg) {
+                loginMsg.innerHTML = `<span style="color:green">✔ 已连接后端</span>`;
+                setTimeout(() => loginMsg.innerHTML = "", 3000);
+            }
         } else {
             console.warn("Server connection check returned status:", res.status);
         }
     } catch (e) {
         console.error("Server connection check failed:", e);
         const loginMsg = document.getElementById('login-msg');
-        if (loginMsg) loginMsg.innerText = "警告: 无法连接到后端服务 (127.0.0.1:8080)。请确认 server.exe 是否运行。";
+        if (loginMsg) {
+            loginMsg.innerHTML = `
+                警告: 无法连接到后端服务。<br>
+                <small>当前地址: ${API_URL}</small><br>
+                <button onclick="let u=prompt('请输入后端API地址(如 http://xxx.cpolar.cn/api):', '${API_URL}'); if(u) window.setApiUrl(u)" style="margin-top:5px;cursor:pointer;">配置后端地址</button>
+            `;
+        }
     }
 })();
 
