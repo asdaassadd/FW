@@ -24,17 +24,20 @@
 
 由于后端是 C++ 长连接服务，无法部署在 Vercel 等 Serverless 平台。你可以选择 **本地运行** 或 **云端容器部署**。
 
-#### 方案 A: 云端容器部署 (Render/Railway - 推荐)
-支持 Linux 环境部署，无需本地挂机。
+#### 方案 A: 云端容器部署 (推荐 Zeabur)
+Zeabur 对新手非常友好，通常不需要复杂的认证，直接用 GitHub 登录即可。
 
 1. 确保项目已同步到 GitHub。
-2. 注册并登录 [Render](https://render.com) 或 [Railway](https://railway.app)。
-3. 创建新的 **Web Service** 并连接你的 GitHub 仓库。
-4. **关键配置**:
-   - **Root Directory (根目录)**: `backend`
-   - 平台会自动检测 `backend/Dockerfile` 并构建。
-5. 部署完成后，复制分配的公网 URL (例如 `https://xxx.onrender.com`)。
-6. 在前端页面设置中填入该 URL。
+2. 注册并登录 [Zeabur](https://zeabur.com) (直接使用 GitHub 登录)。
+3. 点击 **Create Project** (创建项目)。
+4. 点击 **Deploy New Service** (部署新服务) -> **Git** -> 选择你的 GitHub 仓库。
+5. **关键配置**:
+   - Zeabur 通常会自动检测到 Dockerfile。
+   - 如果需要手动设置，请确保 **Root Directory (根目录)** 设置为 `backend`。
+6. 部署完成后，在 **Networking** (网络) 选项卡中点击 **Generate Domain** (生成域名) 获取公网地址 (例如 `https://xxx.zeabur.app`)。
+7. 在前端页面设置中填入该 URL。
+
+*备选方案: Render / Railway / Koyeb 也是不错的选择，但可能需要信用卡验证。*
 
 #### 方案 B: 本地运行 + 内网穿透
 适合开发调试。
