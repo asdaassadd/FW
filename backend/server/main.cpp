@@ -5,6 +5,7 @@
 #include <map>
 #include <cmath>
 #include <algorithm>
+#ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -12,10 +13,22 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <winhttp.h>
-#include "path_planner.hpp"
-
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winhttp.lib")
+typedef int socklen_t;
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <cstring>
+#define SOCKET int
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
+#define closesocket close
+#endif
+#include "path_planner.hpp"
 
 using namespace std;
 
@@ -133,7 +146,12 @@ std::wstring widen(const std::string& s) {
     return std::wstring(s.begin(), s.end());
 }
 
-std::string http_post_json_winhttp(const std::wstring& host, int port, bool https, const std::wstring& path, const std::wstring& headers, const std::string& body) {
+#ifdef _WIN32
+std::string http_post_json(const std::string& host_str, int port, bool https, const std::string& path_str, const std::string& key, const std::string& body) {
+    std::wstring host = widen(host_str);
+    std::wstring path = widen(path_str);
+    std::wstring headers = L"Content-Type: application/json\r\nAuthorization: Bearer " + widen(key) + L"\r\n";
+    
     std::string resp;
     HINTERNET hSession = WinHttpOpen(L"Svc", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession) { std::cerr << "WinHttpOpen failed: " << GetLastError() << std::endl; return resp; }
@@ -169,6 +187,35 @@ std::string http_post_json_winhttp(const std::wstring& host, int port, bool http
     if (hSession) WinHttpCloseHandle(hSession);
     return resp;
 }
+#else
+std::string http_post_json(const std::string& host, int port, bool https, const std::string& path, const std::string& key, const std::string& body) {
+    std::string resp;
+    // Create temp file for body
+    char filename[] = "/tmp/reqXXXXXX";
+    int fd = mkstemp(filename);
+    if (fd != -1) {
+        write(fd, body.c_str(), body.size());
+        close(fd);
+        
+        std::string cmd = "curl -s -X POST ";
+        cmd += "-H \"Content-Type: application/json\" ";
+        cmd += "-H \"Authorization: Bearer " + key + "\" ";
+        cmd += "-d @" + std::string(filename) + " ";
+        cmd += (https ? "https://" : "http://") + host + path;
+        
+        FILE* fp = popen(cmd.c_str(), "r");
+        if (fp) {
+            char buf[1024];
+            while (fgets(buf, sizeof(buf), fp) != NULL) {
+                resp += buf;
+            }
+            pclose(fp);
+        }
+        unlink(filename);
+    }
+    return resp;
+}
+#endif
 
 std::string handle_chat_deepseek(const std::string& msg) {
     const char* envk = std::getenv("DEEPSEEK_API_KEY");
@@ -183,7 +230,7 @@ std::string handle_chat_deepseek(const std::string& msg) {
     std::wstring host = L"api.deepseek.com";
     std::wstring path = L"/chat/completions";
     std::wstring headers = L"Content-Type: application/json\r\nAuthorization: Bearer " + widen(key) + L"\r\n";
-    std::string res = http_post_json_winhttp(host, 443, true, path, headers, payload);
+    std::string res = http_post_json(std::string(host.begin(), host.end()), 443, true, std::string(path.begin(), path.end()), key, payload);
     
     if (res.empty()) {
         return "{\"error\": \"Network Error: No response from DeepSeek API (Check Console)\", \"response\": \"\"}";
@@ -873,16 +920,20 @@ std::string handle_request(const std::string& method, const std::string& path, c
 }
 
 int main() {
+#ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         std::cerr << "WSAStartup failed.\n";
         return 1;
     }
+#endif
 
     SOCKET server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == INVALID_SOCKET) {
         std::cerr << "Socket creation failed.\n";
+#ifdef _WIN32
         WSACleanup();
+#endif
         return 1;
     }
 
@@ -894,7 +945,9 @@ int main() {
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) == SOCKET_ERROR) {
         std::cerr << "Bind failed.\n";
         closesocket(server_fd);
+#ifdef _WIN32
         WSACleanup();
+#endif
         return 1;
     }
 
@@ -967,6 +1020,8 @@ int main() {
     }
 
     closesocket(server_fd);
+#ifdef _WIN32
     WSACleanup();
+#endif
     return 0;
 }

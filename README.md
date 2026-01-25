@@ -20,11 +20,25 @@
 4. **重要配置**: 在 "Root Directory" (根目录) 设置中，点击 "Edit" 并选择 `frontend` 文件夹。
 5. 点击 "Deploy"。
 
-### 2. 后端部署 (本地/服务器)
+### 2. 后端部署 (本地或云端)
 
-后端是 C++ 可执行程序 (`server.exe`)，无法直接在 Vercel (Serverless 环境) 上运行。你需要在一个支持长时间运行进程的环境中运行它。
+由于后端是 C++ 长连接服务，无法部署在 Vercel 等 Serverless 平台。你可以选择 **本地运行** 或 **云端容器部署**。
 
-**本地运行 + 内网穿透 (推荐):**
+#### 方案 A: 云端容器部署 (Render/Railway - 推荐)
+支持 Linux 环境部署，无需本地挂机。
+
+1. 确保项目已同步到 GitHub。
+2. 注册并登录 [Render](https://render.com) 或 [Railway](https://railway.app)。
+3. 创建新的 **Web Service** 并连接你的 GitHub 仓库。
+4. **关键配置**:
+   - **Root Directory (根目录)**: `backend`
+   - 平台会自动检测 `backend/Dockerfile` 并构建。
+5. 部署完成后，复制分配的公网 URL (例如 `https://xxx.onrender.com`)。
+6. 在前端页面设置中填入该 URL。
+
+#### 方案 B: 本地运行 + 内网穿透
+适合开发调试。
+
 1. 在本地电脑上运行编译好的 `server.exe` (默认监听 8080 端口)。
 2. 使用 cpolar 或其他内网穿透工具将本地 8080 端口暴露到公网。
    ```bash
