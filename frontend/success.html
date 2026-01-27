@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>订阅结果</title>
+  <style>
+    :root { --primary-color:#262626; --border-color:#e5e5e5; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#f7f8fa; color:#262626; }
+    .card { max-width:640px; margin:60px auto; background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.05); padding:24px; }
+    h1 { font-size:22px; margin:0 0 12px 0; }
+    .desc { color:#666; font-size:14px; margin-bottom:16px; }
+    .log { background:#fff; border:1px solid var(--border-color); border-radius:8px; padding:14px; min-height:80px; font-family:'Consolas',monospace; white-space:pre-wrap; }
+    .actions { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+    .btn { padding:10px 20px; border:1px solid var(--border-color); border-radius:20px; background:#fff; color:#595959; cursor:pointer; font-weight:500; }
+    .btn-primary { background:#262626; color:#fff; border:none; }
+    .btn:hover { border-color:#262626; color:#262626; }
+    .btn-primary:hover { background:#000; }
+    .row { display:flex; gap:8px; margin-top:12px; }
+    input { flex:1; padding:10px; border:1px solid var(--border_color,#e5e5e5); border-radius:6px; font-family:'Consolas',monospace; }
+    .ok { color:green; }
+    .warn { color:#d32f2f; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>订阅结果</h1>
+    <div class="desc">页面已尝试自动确认您的订单。如未成功，可手动输入订单号重试。</div>
+    <div id="status" class="log">正在确认订阅…</div>
+    <div class="row">
+      <input id="order-id-input" placeholder="输入订单号(如 Creem 返回的 id)">
+      <button class="btn" id="btn-confirm">手动确认</button>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/">返回首页</a>
+      <button class="btn" id="btn-set-api">配置后端地址</button>
+    </div>
+  </div>
+  <script>
+    const savedApiUrl = localStorage.getItem('api_url');
+    const defaultApiUrl = "http://127.0.0.1:8080/api";
+    let API_URL = savedApiUrl || defaultApiUrl;
+    if (API_URL) {
+      API_URL = API_URL.replace(/\/+$/, "");
+      if (!API_URL.endsWith("/api")) API_URL = API_URL + "/api";
+    }
+    function getOrderIdFromLocation() {
+      const p = new URLSearchParams(location.search);
+      return p.get("id") || p.get("order_id") || p.get("checkout_id") || "";
+    }
+    async function confirmOrder(orderId) {
+      const box = document.getElementById("status");
+      if (!orderId) { box.textContent = "未找到订单号，请输入后手动确认。"; return; }
+      box.textContent = "正在向后端确认订单: " + orderId + " …";
+      try {
+        const res = await fetch(API_URL + "/pay/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order_id: orderId })
+        });
+        const text = await res.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch (e) { box.textContent = "返回数据不是有效JSON: " + text.slice(0, 200); return; }
+        if (data.status === "success") {
+          const exp = data.expiry ? ("，有效期至 " + data.expiry) : "";
+          box.innerHTML = "<span class='ok'>✔ 订阅已开通</span>" + exp;
+        } else {
+          box.innerHTML = "<span class='warn'>✖ 未完成支付或订单不存在</span>";
+        }
+      } catch (e) {
+        document.getElementById("status").textContent = "确认失败: " + e.message;
+      }
+    }
+    document.getElementById("btn-confirm").addEventListener("click", function() {
+      const id = document.getElementById("order-id-input").value.trim();
+      confirmOrder(id);
+    });
+    document.getElementById("btn-set-api").addEventListener("click", function() {
+      const u = prompt("请输入后端API地址(如 https://xxx.cpolar.top/api):", API_URL);
+      if (u) {
+        let v = u.replace(/\/+$/, "");
+        if (!v.endsWith("/api")) v = v + "/api";
+        localStorage.setItem("api_url", v);
+        alert("后端地址已更新为: " + v);
+      }
+    });
+    (function auto() {
+      let id = getOrderIdFromLocation();
+      if (!id) {
+        try { id = localStorage.getItem("last_order_id") || ""; } catch (e) {}
+      }
+      confirmOrder(id);
+    })();
+  </script>
+</body>
+</html>

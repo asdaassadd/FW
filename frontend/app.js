@@ -1834,9 +1834,20 @@ async function payCreate() {
             return;
         }
         currentOrderId = data.order_id || null;
+        try { if (currentOrderId) localStorage.setItem('last_order_id', currentOrderId); } catch (e) {}
         if (urlBox) {
             urlBox.style.display = 'block';
-            urlBox.innerText = '订阅链接: ' + (data.payment_url || '(无)');
+            const u = data.payment_url || '';
+            if (u && /^https?:\/\//i.test(u)) {
+                urlBox.innerHTML = '订阅链接: <a href="' + u + '" target="_blank" rel="noopener">打开支付页面</a>';
+                let opened = false;
+                try { const w = window.open(u, '_blank'); opened = !!w; } catch (e) {}
+                if (!opened) {
+                    try { window.location.href = u; } catch (e) {}
+                }
+            } else {
+                urlBox.innerText = '订阅链接: ' + (u || '(无)');
+            }
         }
         if (statusBox) {
             statusBox.style.display = 'block';

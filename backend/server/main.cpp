@@ -37,6 +37,18 @@ using namespace std;
 #ifndef DEFAULT_DEEPSEEK_KEY
 #define DEFAULT_DEEPSEEK_KEY "sk-d68efdff844741a5be659d0b89cc5ca8"
 #endif
+#ifndef DEFAULT_CREEM_PRODUCT_ID
+#define DEFAULT_CREEM_PRODUCT_ID "prod_1GpSynkTY2fZb57S1RLhcd"
+#endif
+#ifndef DEFAULT_SUCCESS_URL
+#define DEFAULT_SUCCESS_URL "https://fzfw.vercel.app/success"
+#endif
+#ifndef DEFAULT_CREEM_API_KEY
+#define DEFAULT_CREEM_API_KEY "creem_test_7OKhgFBabtLK7SUsJOunY7"
+#endif
+#ifndef DEFAULT_CREEM_HOST
+#define DEFAULT_CREEM_HOST "test-api.creem.io"
+#endif
 
 // Forward declaration for string parsing used by extract_deepseek_content
 bool parse_string(const std::string& s, const std::string& key, std::string& out);
@@ -396,6 +408,52 @@ std::string handle_chat_deepseek(const std::string& msg) {
 }
 
 // --- Modules ---
+
+static std::string trim(const std::string& s) {
+    size_t i = 0, j = s.size();
+    while (i < j && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) i++;
+    while (j > i && (s[j - 1] == ' ' || s[j - 1] == '\t' || s[j - 1] == '\r' || s[j - 1] == '\n')) j--;
+    return s.substr(i, j - i);
+}
+
+static std::string read_file_simple(const std::wstring& wpath) {
+    std::string out;
+#ifdef _WIN32
+    FILE* fp = _wfopen(wpath.c_str(), L"rb");
+    if (!fp) return "";
+#else
+    std::string path(wpath.begin(), wpath.end());
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp) return "";
+#endif
+    char buf[1024];
+    size_t n = 0;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        out.append(buf, buf + n);
+        if (out.size() > 8192) break;
+    }
+    fclose(fp);
+    return trim(out);
+}
+
+static std::string get_creem_api_key_runtime() {
+    const char* envk = std::getenv("CREEM_API_KEY");
+    if (envk && *envk) return std::string(envk);
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH];
+    GetModuleFileNameW(NULL, buf, MAX_PATH);
+    std::wstring exe(buf);
+    size_t p = exe.find_last_of(L"\\/");
+    std::wstring dir = p == std::wstring::npos ? L"." : exe.substr(0, p);
+    std::wstring keypath = dir + L"\\creem.key";
+    std::string k = read_file_simple(keypath);
+    if (!k.empty()) return k;
+#else
+    std::string k = read_file_simple(L"./creem.key");
+    if (!k.empty()) return k;
+#endif
+    return std::string(DEFAULT_CREEM_API_KEY);
+}
 
 class UserManager {
     std::map<std::string, std::string> users;
@@ -1008,7 +1066,7 @@ std::string handle_formation_plan(const std::string& body) {
     return ss.str();
 }
 
-std::string handle_request(const std::string& method, const std::string& path, const std::string& body, 
+std::string handle_request(const std::string& method, const std::string& path, const std::string& body, const std::string& headers,
                            UserManager& userMgr, PathPlanner& planner, PaymentManager& payMgr, SubscriptionManager& subsMgr) {
     
     // CORS headers for local development
@@ -1058,22 +1116,24 @@ std::string handle_request(const std::string& method, const std::string& path, c
             return "HTTP/1.1 400 Bad Request\r\n" + cors + "Content-Type: text/plain\r\n\r\nBad Request";
         }
         if (provider == "creem") {
-            const char* k = std::getenv("CREEM_API_KEY");
-            std::string api_key = k ? std::string(k) : "";
+            std::string api_key = get_creem_api_key_runtime();
             std::string product_id = "";
             parse_string(body, "\"product_id\"", product_id);
             if (product_id.empty()) {
                 const char* p = std::getenv("CREEM_PRODUCT_ID");
                 if (p) product_id = std::string(p);
             }
+            if (product_id.empty()) {
+                product_id = std::string(DEFAULT_CREEM_PRODUCT_ID);
+            }
             std::string success_url = "";
             const char* s = std::getenv("CREEM_SUCCESS_URL");
-            success_url = s ? std::string(s) : "https://example.com/success";
+            success_url = s ? std::string(s) : std::string(DEFAULT_SUCCESS_URL);
             if (!api_key.empty() && !product_id.empty()) {
                 std::stringstream payload;
                 payload << "{\"product_id\":\"" << escape_json(product_id) << "\",\"success_url\":\"" << escape_json(success_url) << "\",\"metadata\":{\"userId\":\"" << escape_json(username) << "\"}}";
                 std::string headers = "Content-Type: application/json\r\nx-api-key: " + api_key + "\r\n";
-                std::string res = http_post_json_custom("api.creem.io", 443, true, "/v1/checkouts", headers, payload.str());
+                std::string res = http_post_json_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts", headers, payload.str());
                 std::string pay_url = "";
                 std::string order_id = "";
                 parse_string(res, "\"checkout_url\"", pay_url);
@@ -1097,10 +1157,10 @@ std::string handle_request(const std::string& method, const std::string& path, c
         std::string order_id = "";
         parse_string(body, "\"order_id\"", order_id);
         std::string st = payMgr.get_status(order_id);
-        const char* k = std::getenv("CREEM_API_KEY");
-        if (k && !order_id.empty()) {
-            std::string headers = "x-api-key: " + std::string(k) + "\r\n";
-            std::string res = http_get_custom("api.creem.io", 443, true, "/v1/checkouts?id=" + order_id, headers);
+        std::string api_key = get_creem_api_key_runtime();
+        if (!api_key.empty() && !order_id.empty()) {
+            std::string headers = "x-api-key: " + api_key + "\r\n";
+            std::string res = http_get_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts?id=" + order_id, headers);
             std::string st2 = "";
             parse_string(res, "\"status\"", st2);
             if (!st2.empty()) st = st2;
@@ -1113,10 +1173,10 @@ std::string handle_request(const std::string& method, const std::string& path, c
         std::string order_id = "";
         parse_string(body, "\"order_id\"", order_id);
         bool ok = false;
-        const char* k = std::getenv("CREEM_API_KEY");
-        if (k && !order_id.empty()) {
-            std::string headers = "x-api-key: " + std::string(k) + "\r\n";
-            std::string res = http_get_custom("api.creem.io", 443, true, "/v1/checkouts?id=" + order_id, headers);
+        std::string api_key = get_creem_api_key_runtime();
+        if (!api_key.empty() && !order_id.empty()) {
+            std::string headers = "x-api-key: " + api_key + "\r\n";
+            std::string res = http_get_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts?id=" + order_id, headers);
             std::string st2 = "";
             parse_string(res, "\"status\"", st2);
             if (st2 == "completed" || st2 == "paid") ok = true;
@@ -1217,6 +1277,51 @@ std::string handle_request(const std::string& method, const std::string& path, c
     if (path == "/api/sensor_plan" && method == "POST") {
         std::string res = handle_sensor_plan(body);
         return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + res;
+    }
+    if (path == "/api/webhook" && method == "POST") {
+        std::string expected;
+        const char* w = std::getenv("CREEM_WEBHOOK_KEY");
+        if (w) expected = std::string(w);
+        if (!expected.empty()) {
+            std::string hv = "";
+            size_t k = headers.find("x-webhook-key:");
+            if (k != std::string::npos) {
+                size_t v1 = headers.find(":", k);
+                if (v1 != std::string::npos) {
+                    size_t v2 = headers.find("\r\n", v1 + 1);
+                    if (v2 == std::string::npos) v2 = headers.size();
+                    hv = headers.substr(v1 + 1, v2 - (v1 + 1));
+                    while (!hv.empty() && (hv[0] == ' ' || hv[0] == '\t')) hv.erase(hv.begin());
+                }
+            }
+            if (hv != expected) {
+                return "HTTP/1.1 401 Unauthorized\r\n" + cors + "Content-Type: text/plain\r\n\r\nUnauthorized";
+            }
+        }
+        std::string order_id = "";
+        std::string status = "";
+        std::string user = "";
+        parse_string(body, "\"id\"", order_id);
+        parse_string(body, "\"checkout_id\"", order_id);
+        parse_string(body, "\"status\"", status);
+        parse_string(body, "\"userId\"", user);
+        bool ok = false;
+        if (status == "completed" || status == "paid" || status == "success") ok = true;
+        if (ok) {
+            if (!order_id.empty()) {
+                if (!user.empty()) payMgr.set_user(order_id, user);
+                payMgr.set_status(order_id, "success");
+                std::string u = payMgr.get_user(order_id);
+                if (u.empty()) u = user;
+                if (!u.empty() && u != "admin") {
+                    subsMgr.extend(u, 30);
+                }
+                std::stringstream ss;
+                ss << "{\"status\": \"ok\", \"order_id\": \"" << order_id << "\", \"expiry\": \"" << subsMgr.expiry_str(u) << "\"}";
+                return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+            }
+        }
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n{\"status\": \"ignored\"}";
     }
     if (path == "/api/chat" && method == "POST") {
         std::string msg;
@@ -1342,7 +1447,12 @@ int main() {
             body = request.substr(body_pos + 4);
         }
 
-        std::string response = handle_request(method, path, body, userMgr, planner, payMgr, subsMgr);
+        size_t header_end2 = request.find("\r\n\r\n");
+        std::string headers = "";
+        if (header_end2 != std::string::npos) {
+            headers = request.substr(0, header_end2);
+        }
+        std::string response = handle_request(method, path, body, headers, userMgr, planner, payMgr, subsMgr);
         send(new_socket, response.c_str(), response.length(), 0);
         closesocket(new_socket);
     }
