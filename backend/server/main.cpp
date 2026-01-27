@@ -5,6 +5,7 @@
 #include <map>
 #include <cmath>
 #include <algorithm>
+#include <ctime>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -23,6 +24,7 @@ typedef int socklen_t;
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <cstring>
+#include <time.h>
 #define SOCKET int
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
@@ -198,6 +200,138 @@ std::string http_post_json(const std::string& host_str, int port, bool https, co
     if (hSession) WinHttpCloseHandle(hSession);
     return resp;
 }
+#ifdef _WIN32
+std::string http_post_json_custom(const std::string& host_str, int port, bool https, const std::string& path_str, const std::string& headers_str, const std::string& body) {
+    std::wstring host = widen(host_str);
+    std::wstring path = widen(path_str);
+    std::wstring headers = widen(headers_str);
+    std::string resp;
+    HINTERNET hSession = WinHttpOpen(L"Svc", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) { return resp; }
+    DWORD protocols = 0x00000800;
+    WinHttpSetOption(hSession, 134, &protocols, sizeof(protocols));
+    HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), (INTERNET_PORT)port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return resp; }
+    DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", path.c_str(), NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return resp; }
+    if (https) {
+        DWORD dwFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+        WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
+    }
+    BOOL ok = WinHttpSendRequest(hRequest, headers.c_str(), (DWORD)headers.size(), (LPVOID)body.data(), (DWORD)body.size(), (DWORD)body.size(), 0);
+    if (ok) ok = WinHttpReceiveResponse(hRequest, NULL);
+    if (ok) {
+        for (;;) {
+            DWORD avail = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &avail)) break;
+            if (avail == 0) break;
+            std::vector<char> buf(avail);
+            DWORD read = 0;
+            if (!WinHttpReadData(hRequest, buf.data(), avail, &read)) break;
+            resp.append(buf.data(), buf.data() + read);
+        }
+    }
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+    return resp;
+}
+std::string http_get_custom(const std::string& host_str, int port, bool https, const std::string& path_str, const std::string& headers_str) {
+    std::wstring host = widen(host_str);
+    std::wstring path = widen(path_str);
+    std::wstring headers = widen(headers_str);
+    std::string resp;
+    HINTERNET hSession = WinHttpOpen(L"Svc", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) { return resp; }
+    DWORD protocols = 0x00000800;
+    WinHttpSetOption(hSession, 134, &protocols, sizeof(protocols));
+    HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), (INTERNET_PORT)port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return resp; }
+    DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path.c_str(), NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return resp; }
+    if (https) {
+        DWORD dwFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+        WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
+    }
+    BOOL ok = WinHttpSendRequest(hRequest, headers.c_str(), (DWORD)headers.size(), WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+    if (ok) ok = WinHttpReceiveResponse(hRequest, NULL);
+    if (ok) {
+        for (;;) {
+            DWORD avail = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &avail)) break;
+            if (avail == 0) break;
+            std::vector<char> buf(avail);
+            DWORD read = 0;
+            if (!WinHttpReadData(hRequest, buf.data(), avail, &read)) break;
+            resp.append(buf.data(), buf.data() + read);
+        }
+    }
+    if (hRequest) WinHttpCloseHandle(hRequest);
+    if (hConnect) WinHttpCloseHandle(hConnect);
+    if (hSession) WinHttpCloseHandle(hSession);
+    return resp;
+}
+#else
+std::string http_post_json_custom(const std::string& host, int port, bool https, const std::string& path, const std::string& headers_str, const std::string& body) {
+    std::string resp;
+    char filename[] = "/tmp/reqXXXXXX";
+    int fd = mkstemp(filename);
+    if (fd != -1) {
+        write(fd, body.c_str(), body.size());
+        close(fd);
+        std::string url = (https ? "https://" : "http://") + host + path;
+        std::string cmd = "curl -s -X POST ";
+        size_t pos = 0;
+        while (pos < headers_str.size()) {
+            size_t end = headers_str.find("\r\n", pos);
+            std::string h = headers_str.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+            if (!h.empty()) {
+                cmd += "-H \"" + h + "\" ";
+            }
+            if (end == std::string::npos) break;
+            pos = end + 2;
+        }
+        cmd += "-d @" + std::string(filename) + " " + url;
+        FILE* fp = popen(cmd.c_str(), "r");
+        if (fp) {
+            char buf[1024];
+            while (fgets(buf, sizeof(buf), fp) != NULL) {
+                resp += buf;
+            }
+            pclose(fp);
+        }
+        unlink(filename);
+    }
+    return resp;
+}
+std::string http_get_custom(const std::string& host, int port, bool https, const std::string& path, const std::string& headers_str) {
+    std::string resp;
+    std::string url = (https ? "https://" : "http://") + host + path;
+    std::string cmd = "curl -s -X GET ";
+    size_t pos = 0;
+    while (pos < headers_str.size()) {
+        size_t end = headers_str.find("\r\n", pos);
+        std::string h = headers_str.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+        if (!h.empty()) {
+            cmd += "-H \"" + h + "\" ";
+        }
+        if (end == std::string::npos) break;
+        pos = end + 2;
+    }
+    cmd += url;
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (fp) {
+        char buf[1024];
+        while (fgets(buf, sizeof(buf), fp) != NULL) {
+            resp += buf;
+        }
+        pclose(fp);
+    }
+    return resp;
+}
+#endif
 #else
 std::string http_post_json(const std::string& host, int port, bool https, const std::string& path, const std::string& key, const std::string& body) {
     std::string resp;
@@ -276,6 +410,75 @@ public:
         if (users.count(u)) return false;
         users[u] = p;
         return true;
+    }
+};
+
+class PaymentManager {
+    std::map<std::string, std::string> order_status;
+    std::map<std::string, std::string> order_user;
+    int seq;
+public:
+    PaymentManager(): seq(1000) {}
+    void set_user(const std::string& order_id, const std::string& user) { order_user[order_id] = user; }
+    void set_status(const std::string& order_id, const std::string& st) { order_status[order_id] = st; }
+    std::string create_order(double amount, const std::string& subject, const std::string& provider, const std::string& username, std::string& pay_url) {
+        std::stringstream idss;
+        idss << "ORD_" << seq++;
+        std::string order_id = idss.str();
+        order_status[order_id] = "pending";
+        order_user[order_id] = username;
+        std::stringstream urlss;
+        urlss << "creem://pay?order_id=" << order_id << "&amount=" << amount << "&subject=" << escape_json(subject);
+        pay_url = urlss.str();
+        return order_id;
+    }
+    std::string get_status(const std::string& order_id) {
+        auto it = order_status.find(order_id);
+        if (it == order_status.end()) return "not_found";
+        return it->second;
+    }
+    bool confirm(const std::string& order_id) {
+        auto it = order_status.find(order_id);
+        if (it == order_status.end()) return false;
+        it->second = "success";
+        return true;
+    }
+    std::string get_user(const std::string& order_id) {
+        auto it = order_user.find(order_id);
+        if (it == order_user.end()) return "";
+        return it->second;
+    }
+};
+
+class SubscriptionManager {
+    std::map<std::string, time_t> expiry;
+public:
+    bool is_active(const std::string& user) {
+        if (user == "admin") return true;
+        time_t now = time(NULL);
+        auto it = expiry.find(user);
+        return it != expiry.end() && it->second > now;
+    }
+    void extend(const std::string& user, int days) {
+        if (user.empty()) return;
+        time_t now = time(NULL);
+        time_t base = now;
+        auto it = expiry.find(user);
+        if (it != expiry.end() && it->second > now) {
+            base = it->second;
+        }
+        expiry[user] = base + (time_t)days * 24 * 3600;
+    }
+    std::string expiry_str(const std::string& user) {
+        if (user == "admin") return "2099-12-31";
+        auto it = expiry.find(user);
+        if (it == expiry.end()) return "";
+        time_t t = it->second;
+        struct tm* tmv = localtime(&t);
+        if (!tmv) return "";
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tmv->tm_year + 1900, tmv->tm_mon + 1, tmv->tm_mday);
+        return std::string(buf);
     }
 };
 
@@ -806,7 +1009,7 @@ std::string handle_formation_plan(const std::string& body) {
 }
 
 std::string handle_request(const std::string& method, const std::string& path, const std::string& body, 
-                           UserManager& userMgr, PathPlanner& planner) {
+                           UserManager& userMgr, PathPlanner& planner, PaymentManager& payMgr, SubscriptionManager& subsMgr) {
     
     // CORS headers for local development
     std::string cors = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n";
@@ -840,6 +1043,118 @@ std::string handle_request(const std::string& method, const std::string& path, c
         }
         
         // Login success (or just registered)
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n{\"status\": \"success\", \"token\": \"xyz_" + u + "\", \"username\": \"" + u + "\"}";
+    }
+    if (path == "/api/pay/create" && method == "POST") {
+        double amount = 0.0;
+        parse_double(body, "\"amount\"", amount);
+        std::string subject = "";
+        parse_string(body, "\"subject\"", subject);
+        std::string provider = "";
+        parse_string(body, "\"provider\"", provider);
+        std::string username = "";
+        parse_string(body, "\"username\"", username);
+        if (amount <= 0.0 || subject.empty()) {
+            return "HTTP/1.1 400 Bad Request\r\n" + cors + "Content-Type: text/plain\r\n\r\nBad Request";
+        }
+        if (provider == "creem") {
+            const char* k = std::getenv("CREEM_API_KEY");
+            std::string api_key = k ? std::string(k) : "";
+            std::string product_id = "";
+            parse_string(body, "\"product_id\"", product_id);
+            if (product_id.empty()) {
+                const char* p = std::getenv("CREEM_PRODUCT_ID");
+                if (p) product_id = std::string(p);
+            }
+            std::string success_url = "";
+            const char* s = std::getenv("CREEM_SUCCESS_URL");
+            success_url = s ? std::string(s) : "https://example.com/success";
+            if (!api_key.empty() && !product_id.empty()) {
+                std::stringstream payload;
+                payload << "{\"product_id\":\"" << escape_json(product_id) << "\",\"success_url\":\"" << escape_json(success_url) << "\",\"metadata\":{\"userId\":\"" << escape_json(username) << "\"}}";
+                std::string headers = "Content-Type: application/json\r\nx-api-key: " + api_key + "\r\n";
+                std::string res = http_post_json_custom("api.creem.io", 443, true, "/v1/checkouts", headers, payload.str());
+                std::string pay_url = "";
+                std::string order_id = "";
+                parse_string(res, "\"checkout_url\"", pay_url);
+                parse_string(res, "\"id\"", order_id);
+                if (!order_id.empty() && !pay_url.empty()) {
+                    payMgr.set_user(order_id, username);
+                    payMgr.set_status(order_id, "pending");
+                    std::stringstream ss;
+                    ss << "{\"order_id\": \"" << order_id << "\", \"payment_url\": \"" << escape_json(pay_url) << "\", \"status\": \"pending\"}";
+                    return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+                }
+            }
+        }
+        std::string pay_url;
+        std::string order_id = payMgr.create_order(amount, subject, provider, username, pay_url);
+        std::stringstream ss;
+        ss << "{\"order_id\": \"" << order_id << "\", \"payment_url\": \"" << escape_json(pay_url) << "\", \"status\": \"pending\"}";
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+    }
+    if (path == "/api/pay/status" && method == "POST") {
+        std::string order_id = "";
+        parse_string(body, "\"order_id\"", order_id);
+        std::string st = payMgr.get_status(order_id);
+        const char* k = std::getenv("CREEM_API_KEY");
+        if (k && !order_id.empty()) {
+            std::string headers = "x-api-key: " + std::string(k) + "\r\n";
+            std::string res = http_get_custom("api.creem.io", 443, true, "/v1/checkouts?id=" + order_id, headers);
+            std::string st2 = "";
+            parse_string(res, "\"status\"", st2);
+            if (!st2.empty()) st = st2;
+        }
+        std::stringstream ss;
+        ss << "{\"status\": \"" << st << "\"}";
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+    }
+    if (path == "/api/pay/confirm" && method == "POST") {
+        std::string order_id = "";
+        parse_string(body, "\"order_id\"", order_id);
+        bool ok = false;
+        const char* k = std::getenv("CREEM_API_KEY");
+        if (k && !order_id.empty()) {
+            std::string headers = "x-api-key: " + std::string(k) + "\r\n";
+            std::string res = http_get_custom("api.creem.io", 443, true, "/v1/checkouts?id=" + order_id, headers);
+            std::string st2 = "";
+            parse_string(res, "\"status\"", st2);
+            if (st2 == "completed" || st2 == "paid") ok = true;
+        }
+        if (!ok) ok = payMgr.confirm(order_id);
+        if (ok) {
+            std::string user = payMgr.get_user(order_id);
+            if (!user.empty() && user != "admin") {
+                subsMgr.extend(user, 30);
+            }
+        }
+        std::stringstream ss;
+        ss << "{\"status\": \"" << (ok ? "success" : "not_found") << "\"";
+        if (ok) {
+            std::string user = payMgr.get_user(order_id);
+            ss << ", \"expiry\": \"" << subsMgr.expiry_str(user) << "\"";
+        }
+        ss << "}";
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+    }
+    if (path == "/api/subscription/status" && method == "POST") {
+        std::string user = "";
+        parse_string(body, "\"username\"", user);
+        bool active = subsMgr.is_active(user);
+        std::stringstream ss;
+        ss << "{\"active\": " << (active ? "true" : "false") << ", \"expiry\": \"" << subsMgr.expiry_str(user) << "\"}";
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
+    }
+    if (path == "/api/register" && method == "POST") {
+        std::string u, p;
+        bool has_u = parse_string(body, "\"username\"", u);
+        bool has_p = parse_string(body, "\"password\"", p);
+        if (!has_u || !has_p || u.empty() || p.empty()) {
+            return "HTTP/1.1 400 Bad Request\r\n" + cors + "Content-Type: text/plain\r\n\r\nBad Request";
+        }
+        if (!userMgr.register_user(u, p)) {
+            return "HTTP/1.1 409 Conflict\r\n" + cors + "Content-Type: text/plain\r\n\r\nUser Exists";
+        }
         return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n{\"status\": \"success\", \"token\": \"xyz_" + u + "\", \"username\": \"" + u + "\"}";
     }
 
@@ -971,6 +1286,8 @@ int main() {
 
     UserManager userMgr;
     PathPlanner planner;
+    PaymentManager payMgr;
+    SubscriptionManager subsMgr;
 
     while (true) {
         SOCKET new_socket = accept(server_fd, NULL, NULL);
@@ -1025,7 +1342,7 @@ int main() {
             body = request.substr(body_pos + 4);
         }
 
-        std::string response = handle_request(method, path, body, userMgr, planner);
+        std::string response = handle_request(method, path, body, userMgr, planner, payMgr, subsMgr);
         send(new_socket, response.c_str(), response.length(), 0);
         closesocket(new_socket);
     }

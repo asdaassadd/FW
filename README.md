@@ -56,6 +56,34 @@ Zeabur 对新手非常友好，通常不需要复杂的认证，直接用 GitHub
 3. 点击 "配置后端地址" 按钮，输入你的 cpolar 公网地址 (例如 `https://xyz.cpolar.cn/api`)。
 4. 系统会自动保存该地址，下次访问无需再次配置。
 
+### 4. 订阅与支付（Creem）备注
+
+- 概述
+  - 后端已对接 Creem 的 REST API，无需安装 TypeScript 包
+  - 前端保持原有“订阅”入口与按钮，不需要额外改动
+- 环境变量（后端）
+  - `CREEM_API_KEY`：你的 Creem API Key
+  - `CREEM_PRODUCT_ID`：Creem 后台创建的产品 ID（如 `prod_abc123`）
+  - `CREEM_SUCCESS_URL`：支付成功后的跳转地址（如 `https://yourapp.com/success`）
+- 使用步骤
+  - 设置上述环境变量并重启后端（默认端口 8080）
+  - 在前端“订阅”页点击“立即开通”，会生成并展示 Creem 的 `checkout_url`
+  - 完成支付后点击“我已完成订阅”，后端确认成功会为登录用户自动延长 30 天有效期
+- 接口行为（简要）
+  - `POST /api/pay/create`：调用 Creem `POST /v1/checkouts`，返回 `checkout_url` 与 `id`（作为 `order_id`）
+  - `POST /api/pay/status`：优先通过 `GET /v1/checkouts?id=order_id` 读取 `status`，无返回时回退本地状态
+  - `POST /api/pay/confirm`：查询会话状态为 `completed`/`paid` 时判定成功并延长订阅
+- 前端地址配置
+  - 首页“配置后端地址”按钮需填写为 `http(s)://你的域名:8080/api`
+  - 前端已对 `API_URL` 做结尾规范化，避免出现路径双斜杠导致 404
+- 界面与地图
+  - “订阅”与“智能询问”模块激活时，电子海图会自动隐藏（CSS 与脚本双重控制）
+- 安全建议
+  - API Key 不应出现在前端代码或仓库中，请使用环境变量
+  - 后端已启用 TLS 1.2 并使用自定义请求头满足 Creem 的 `x-api-key` 认证
+- 备注
+  - 如需自动确认订阅，后续可启用 Creem 的 Webhook（`creem_io` 提供签名校验与事件处理）；当前流程为“手动确认”
+
 ## 开发环境
 
 - **后端**: Visual Studio 2022 (C++17)

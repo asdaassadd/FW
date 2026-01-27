@@ -6,7 +6,12 @@ const defaultApiUrl = "http://127.0.0.1:8080/api";
 
 let API_URL = urlParams.get('api') || savedApiUrl || defaultApiUrl;
 // const CHAT_API_URL = "http://127.0.0.1:8081/api"; // Removed Python Proxy
-
+if (API_URL) {
+    API_URL = API_URL.replace(/\/+$/, "");
+    if (!API_URL.endsWith('/api')) {
+        API_URL = API_URL + '/api';
+    }
+}
 
 
 // If provided in URL, save it for future sessions
@@ -633,6 +638,9 @@ function showSection(id) {
 }
 
 let chatHistory = [];
+let currentOrderId = null;
+let payPollTimer = null;
+let currentUsername = null;
 
 function toggleChip(btn, type) {
     btn.classList.toggle('active');
@@ -1615,8 +1623,9 @@ async function login() {
             
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
-            
+            currentUsername = u;
             setTimeout(() => showSection('service'), 1000);
+            setTimeout(() => checkSubscription(), 1200);
         } else {
             document.getElementById('login-msg').innerText = "登录失败!";
         }
@@ -1754,10 +1763,171 @@ function showFormationExample() {
     document.getElementById('formation-result').innerText = '已填充示例数据，点击“生成编队”。';
 }
 async function register() {
-    alert("注册功能暂未开放 (Mock)");
+    switchLoginMode('register');
+}
+
+async function doRegister() {
+    const u = (document.getElementById('reg-username')?.value || '').trim();
+    const p1 = document.getElementById('reg-password')?.value || '';
+    const p2 = document.getElementById('reg-confirm')?.value || '';
+    const msgEl = document.getElementById('login-msg');
+    if (!u || !p1 || !p2) {
+        if (msgEl) msgEl.innerText = "请完整填写注册信息";
+        return;
+    }
+    if (p1 !== p2) {
+        if (msgEl) msgEl.innerText = "两次输入的密码不一致";
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: u, password: p1 })
+        });
+        if (res.ok) {
+            if (msgEl) msgEl.innerText = "注册成功! 已自动登录";
+            const btn = document.getElementById('btn-login');
+            if (btn) btn.style.display = 'none';
+            currentUsername = u;
+            setTimeout(() => showSection('service'), 1000);
+            setTimeout(() => checkSubscription(), 1200);
+        } else if (res.status === 409) {
+            if (msgEl) msgEl.innerText = "该账号已存在";
+        } else {
+            if (msgEl) msgEl.innerText = "注册失败";
+        }
+    } catch (e) {
+        if (msgEl) msgEl.innerText = "连接服务器失败: " + e.message;
+    }
 }
 
 // Payment function removed
+async function payCreate() {
+    const amt = parseFloat(document.getElementById('pay-amount')?.value || '0');
+    const subj = (document.getElementById('pay-subject')?.value || '').trim();
+    const urlBox = document.getElementById('pay-url');
+    const statusBox = document.getElementById('pay-status');
+    if (!currentUsername) {
+        if (statusBox) { statusBox.style.display = 'block'; statusBox.innerText = '请先登录'; }
+        return;
+    }
+    if (!Number.isFinite(amt) || amt <= 0 || !subj) {
+        if (statusBox) { statusBox.style.display = 'block'; statusBox.innerText = '请填写有效的金额与订单标题'; }
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/pay/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: amt, subject: subj, provider: 'creem', username: currentUsername })
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            if (statusBox) {
+                statusBox.style.display = 'block';
+                statusBox.innerText = '发起订阅失败: 返回数据不是有效JSON: ' + text.slice(0, 200);
+            }
+            return;
+        }
+        currentOrderId = data.order_id || null;
+        if (urlBox) {
+            urlBox.style.display = 'block';
+            urlBox.innerText = '订阅链接: ' + (data.payment_url || '(无)');
+        }
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '订单: ' + (currentOrderId || '-') + '\n状态: ' + (data.status || 'pending');
+        }
+        if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
+        if (currentOrderId) {
+            payPollTimer = setInterval(payRefresh, 3000);
+        }
+    } catch (e) {
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '发起订阅失败: ' + e.message;
+        }
+    }
+}
+
+async function payRefresh() {
+    const statusBox = document.getElementById('pay-status');
+    if (!currentOrderId) {
+        if (statusBox) { statusBox.style.display = 'block'; statusBox.innerText = '尚未创建订单'; }
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/pay/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: currentOrderId })
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            if (statusBox) {
+                statusBox.style.display = 'block';
+                statusBox.innerText = '查询状态失败: 返回数据不是有效JSON: ' + text.slice(0, 200);
+            }
+            return;
+        }
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '订单: ' + currentOrderId + '\n状态: ' + (data.status || 'unknown');
+        }
+        if (data.status === 'success') {
+            if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
+        }
+    } catch (e) {
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '查询状态失败: ' + e.message;
+        }
+    }
+}
+
+async function payConfirm() {
+    const statusBox = document.getElementById('pay-status');
+    if (!currentOrderId) {
+        if (statusBox) { statusBox.style.display = 'block'; statusBox.innerText = '尚未创建订单'; }
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/pay/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: currentOrderId })
+        });
+        const text = await res.text();
+        let data = {};
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            if (statusBox) {
+                statusBox.style.display = 'block';
+                statusBox.innerText = '确认失败: 返回数据不是有效JSON: ' + text.slice(0, 200);
+            }
+            return;
+        }
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '订单: ' + currentOrderId + '\n状态: ' + (data.status || 'unknown');
+        }
+        if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
+        checkSubscription();
+    } catch (e) {
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerText = '确认失败: ' + e.message;
+        }
+    }
+}
 
 function switchTab(tabId) {
     // Update active tab in sidebar
@@ -1789,11 +1959,47 @@ function switchTab(tabId) {
         updateSearchPreview();
     } else if (tabId === 'buoy') {
         updateBuoyPreview();
+    } else if (tabId === 'pay') {
+        // no map rendering needed
+        if (seaPathLayer) seaPathLayer.clearLayers();
+    }
+
+    const mapArea = document.getElementById('map-area');
+    if (mapArea) {
+        mapArea.style.display = (tabId === 'pay' || tabId === 'chat') ? 'none' : 'block';
     }
 
     try { seaMap && seaMap.invalidateSize(); } catch (e) {}
 }
 
+async function checkSubscription() {
+    try {
+        if (!currentUsername) return;
+        const res = await fetch(`${API_URL}/subscription/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUsername })
+        });
+        const data = await res.json();
+        updateSubscriptionUI(!!data.active, data.expiry || '');
+    } catch (e) {}
+}
+
+function updateSubscriptionUI(active, expiry) {
+    const btns = document.querySelectorAll('.sidebar button');
+    btns.forEach(b => {
+        const isPay = (b.getAttribute('onclick') || '').includes("switchTab('pay')");
+        const shouldDisable = !active && !isPay && currentUsername !== 'admin';
+        b.disabled = shouldDisable;
+        b.style.opacity = shouldDisable ? 0.5 : 1;
+    });
+    const msg = document.getElementById('login-msg');
+    if (!active && currentUsername !== 'admin') {
+        if (msg) msg.innerText = '当前账号未开通服务权限，请完成订阅后使用';
+    } else {
+        if (msg) msg.innerText = expiry ? ('服务有效期至: ' + expiry) : '';
+    }
+}
 function updateBuoyPreview() {
     if (!seaMap) initSeaMap();
     
@@ -1983,24 +2189,24 @@ function showSearchExample() {
 function switchLoginMode(mode) {
     const accountTab = document.getElementById('tab-account');
     const googleTab = document.getElementById('tab-google');
+    const registerTab = document.getElementById('tab-register');
     const accountView = document.getElementById('login-account-view');
     const googleView = document.getElementById('login-google-view');
-    
+    const registerView = document.getElementById('login-register-view');
+    accountTab.classList.remove('active');
+    googleTab.classList.remove('active');
+    if (registerTab) registerTab.classList.remove('active');
+    accountView.style.display = 'none';
+    googleView.style.display = 'none';
+    if (registerView) registerView.style.display = 'none';
     if (mode === 'account') {
         accountTab.classList.add('active');
-        googleTab.classList.remove('active');
         accountView.style.display = 'block';
-        googleView.style.display = 'none';
-    } else {
+    } else if (mode === 'google') {
         googleTab.classList.add('active');
-        accountTab.classList.remove('active');
-        accountView.style.display = 'none';
         googleView.style.display = 'block';
-        
-        // Initialize Google Button (kept same)
         if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
             try {
-                // Replace with your actual Google Client ID
                 google.accounts.id.initialize({
                     client_id: "912895229925-2k31srk6uov77ujpqsj3bbsbc69tl9ug.apps.googleusercontent.com", 
                     callback: handleCredentialResponse
@@ -2013,6 +2219,9 @@ function switchLoginMode(mode) {
                 console.error("Google Login Init Error:", e);
             }
         }
+    } else if (mode === 'register') {
+        if (registerTab) registerTab.classList.add('active');
+        if (registerView) registerView.style.display = 'block';
     }
 }
 
@@ -2054,8 +2263,9 @@ async function googleLogin(token, email) {
             
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
-
+            currentUsername = data.username || email || 'Google User';
             setTimeout(() => showSection('service'), 1000);
+            setTimeout(() => checkSubscription(), 1200);
         } else {
             document.getElementById('login-msg').innerText = "Google 登录失败!";
         }

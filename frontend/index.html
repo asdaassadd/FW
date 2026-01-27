@@ -584,10 +584,7 @@
         .sea-map { height: 420px; border: 1px solid var(--border-color); border-radius: 6px; margin-top: 20px; position: relative; z-index: 1; }
 
         /* Chat Specific Styles */
-        /* Hide Sea Map when Chat tab is active */
-        #tab-chat.active ~ #map-area {
-            display: none !important;
-        }
+        #tab-chat.active ~ #map-area, #tab-pay.active ~ #map-area { display: none !important; }
 
         #tab-chat {
             height: 600px; /* Fixed height or flex */
@@ -778,6 +775,62 @@
         .send-btn:hover {
             background: #000;
         }
+        
+        .plan-card {
+            max-width: 420px;
+            margin: 0 auto;
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            padding: 24px;
+        }
+        .plan-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .plan-price {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 4px;
+        }
+        .plan-sub {
+            font-size: 12px;
+            color: #666;
+            background: #f1f5ff;
+            border: 1px solid #e6efff;
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        .plan-features {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 16px 0;
+        }
+        .plan-features li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #444;
+            padding: 6px 0;
+        }
+        .plan-check {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e6f4ff;
+            color: #007bff;
+            font-size: 12px;
+        }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -809,7 +862,7 @@
                     <span>|</span>
                     <span>忘记账号名</span>
                     <span>|</span>
-                    <span onclick="register()" style="color: #666;">免费注册</span>
+                    <span onclick="register()" style="color: #666;">注册账号</span>
                 </div>
             </div>
 
@@ -817,6 +870,15 @@
                 <div id="buttonDiv" style="display: flex; justify-content: center;"></div>
                 <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #999;">
                     安全快捷，无需注册
+                </div>
+            </div>
+            <div id="login-register-view" style="display: none;">
+                <input type="text" id="reg-username" class="login-input" placeholder="请输入账号名/邮箱">
+                <input type="password" id="reg-password" class="login-input" placeholder="请输入密码">
+                <input type="password" id="reg-confirm" class="login-input" placeholder="确认密码">
+                <button onclick="doRegister()" class="btn-login-submit">注 册</button>
+                <div class="login-links" style="justify-content: center;">
+                    <span onclick="switchLoginMode('account')">已有账号，去登录</span>
                 </div>
             </div>
 
@@ -832,6 +894,7 @@
                 <button onclick="switchTab('formation')">编队阵型规划</button>
                 <button onclick="switchTab('intercept')">拦截航路规划</button>
                 <button onclick="switchTab('chat')">智能询问</button>
+                <button onclick="switchTab('pay')">订阅</button>
             </div>
             
             <div class="content-area">
@@ -1201,6 +1264,31 @@
                 
                 <div id="map-area">
                     <div id="seaMap" class="sea-map" style="margin-top:0; height: 100%; border: none;"></div>
+                </div>
+                <div id="tab-pay" class="sub-section">
+                    <h2>订阅</h2>
+                    <div class="plan-card">
+                        <div class="plan-title">标准访问 · 30天</div>
+                        <div class="plan-price">¥ 9.90</div>
+                        <div class="plan-sub">有效期 30 天｜开通即享</div>
+                        <ul class="plan-features">
+                            <li><span class="plan-check">✔</span> 稳定线路与充足节点</li>
+                            <li><span class="plan-check">✔</span> 不限设备数量</li>
+                            <li><span class="plan-check">✔</span> 支持叠加购买，自动延长有效期</li>
+                            <li><span class="plan-check">✔</span> 不自动续费</li>
+                            <li><span class="plan-check">✔</span> 购买后不支持退款</li>
+                            <li><span class="plan-check">✔</span> 支持在线客服与工单咨询</li>
+                        </ul>
+                        <div class="action-bar" style="margin-top: 8px;">
+                            <button onclick="payCreate()" class="btn-primary">立即开通</button>
+                            <button onclick="payRefresh()" class="btn-outline">刷新状态</button>
+                            <button onclick="payConfirm()" class="btn-outline">我已完成订阅</button>
+                        </div>
+                        <input type="number" id="pay-amount" value="9.9" step="0.01" style="display:none;">
+                        <input type="text" id="pay-subject" value="30天服务使用权限" style="display:none;">
+                    </div>
+                    <div id="pay-url" class="log" style="display:none;"></div>
+                    <div id="pay-status" class="log" style="display:none;"></div>
                 </div>
             </div>
         </div>
