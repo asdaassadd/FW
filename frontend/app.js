@@ -18,6 +18,17 @@ if (API_URL) {
 if (urlParams.get('api')) {
     localStorage.setItem('api_url', API_URL);
 }
+const initialTab = urlParams.get('tab');
+if (initialTab) {
+    try { switchTab(initialTab); } catch (e) {}
+}
+try {
+    const just = localStorage.getItem('subscription_just_activated');
+    if (just === '1') {
+        localStorage.removeItem('subscription_just_activated');
+        try { checkSubscription(); } catch (e) {}
+    }
+} catch (e) {}
 
 // Helper to update API URL from console or UI
 window.setApiUrl = function(url) {
@@ -28,12 +39,16 @@ window.setApiUrl = function(url) {
     alert("后端地址已更新为: " + url + "\n页面将刷新以应用更改。");
     window.location.href = window.location.pathname; // Reload without query params to use localStorage
 };
+window.promptSetApi = function() {
+    const u = prompt('请输入后端API地址(如 https://xxx.ngrok-free.dev/api):', API_URL);
+    if (u) window.setApiUrl(u);
+};
 
 // Auto-check connection on load
 (async function checkConnection() {
     try {
         console.log("Checking connection to:", API_URL);
-        const res = await fetch(API_URL);
+        const res = await fetch(API_URL, { headers: { 'ngrok-skip-browser-warning': '1' } });
         if (res.ok) {
             console.log("Server connected successfully.");
             const loginMsg = document.getElementById('login-msg');
@@ -1615,6 +1630,7 @@ async function login() {
     try {
         const res = await fetch(`${API_URL}/login`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify({username: u, password: p})
         });
         
@@ -1631,7 +1647,14 @@ async function login() {
         }
     } catch (e) {
         console.error(e);
-        document.getElementById('login-msg').innerText = "连接服务器失败 (后端是否运行?)";
+        const el = document.getElementById('login-msg');
+        if (el) {
+            if (location.protocol === 'https:' && /^http:\/\//i.test(API_URL)) {
+                el.innerHTML = "连接服务器失败: 当前页面为 HTTPS，后端为 HTTP，浏览器已拦截混合内容。<br><small>当前后端地址: " + API_URL + "</small><br><button onclick=\"promptSetApi()\" style=\"margin-top:5px;cursor:pointer;\">配置后端地址</button>";
+            } else {
+                el.innerHTML = "连接服务器失败。<br><small>当前后端地址: " + API_URL + "</small><br><button onclick=\"promptSetApi()\" style=\"margin-top:5px;cursor:pointer;\">配置后端地址</button>";
+            }
+        }
     }
 }
 
@@ -1782,7 +1805,7 @@ async function doRegister() {
     try {
         const res = await fetch(`${API_URL}/register`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify({ username: u, password: p1 })
         });
         if (res.ok) {
@@ -1816,11 +1839,18 @@ async function payCreate() {
         if (statusBox) { statusBox.style.display = 'block'; statusBox.innerText = '请填写有效的金额与订单标题'; }
         return;
     }
+    if (location.protocol === 'https:' && /^http:\/\//i.test(API_URL)) {
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerHTML = '发起订阅失败: 当前页面为 HTTPS，后端为 HTTP，浏览器已拦截混合内容。<br><small>当前后端地址: ' + API_URL + '</small><br><button onclick=\"promptSetApi()\" class=\"btn-outline\" style=\"margin-top:6px;cursor:pointer;\">配置后端地址</button>';
+        }
+        return;
+    }
     try {
         const res = await fetch(`${API_URL}/pay/create`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount: amt, subject: subj, provider: 'creem', username: currentUsername })
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
+            body: JSON.stringify({ amount: amt, subject: subj, provider: 'creem', username: currentUsername, product_id: (document.getElementById('pay-product-id')?.value || '').trim() })
         });
         const text = await res.text();
         let data = {};
@@ -1840,18 +1870,25 @@ async function payCreate() {
             const u = data.payment_url || '';
             if (u && /^https?:\/\//i.test(u)) {
                 urlBox.innerHTML = '订阅链接: <a href="' + u + '" target="_blank" rel="noopener">打开支付页面</a>';
-                let opened = false;
-                try { const w = window.open(u, '_blank'); opened = !!w; } catch (e) {}
-                if (!opened) {
-                    try { window.location.href = u; } catch (e) {}
-                }
+            } else if (u && /^creem:\/\//i.test(u) && currentOrderId) {
+                const base = "https://fw-tawny.vercel.app/success.html";
+                const apiParam = encodeURIComponent(API_URL);
+                const successLink = `${base}?api=${apiParam}&id=${encodeURIComponent(currentOrderId)}`;
+                urlBox.innerHTML = '订阅链接: <a href="' + successLink + '" target="_blank" rel="noopener">打开成功页</a>';
             } else {
                 urlBox.innerText = '订阅链接: ' + (u || '(无)');
             }
         }
         if (statusBox) {
             statusBox.style.display = 'block';
-            statusBox.innerText = '订单: ' + (currentOrderId || '-') + '\n状态: ' + (data.status || 'pending');
+            let msg = '订单: ' + (currentOrderId || '-') + '\n状态: ' + (data.status || 'pending');
+            if (data.provider_error) {
+                msg += '\n提供商错误: ' + data.provider_error;
+            }
+            if (data.provider_raw) {
+                msg += '\n提供商返回片段: ' + data.provider_raw;
+            }
+            statusBox.innerText = msg;
         }
         if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null; }
         if (currentOrderId) {
@@ -1860,7 +1897,7 @@ async function payCreate() {
     } catch (e) {
         if (statusBox) {
             statusBox.style.display = 'block';
-            statusBox.innerText = '发起订阅失败: ' + e.message;
+            statusBox.innerHTML = '发起订阅失败: ' + e.message + '<br><small>当前后端地址: ' + API_URL + '</small><br><button onclick=\"promptSetApi()\" class=\"btn-outline\" style=\"margin-top:6px;cursor:pointer;\">配置后端地址</button>';
         }
     }
 }
@@ -1874,7 +1911,7 @@ async function payRefresh() {
     try {
         const res = await fetch(`${API_URL}/pay/status`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify({ order_id: currentOrderId })
         });
         const text = await res.text();
@@ -1912,7 +1949,7 @@ async function payConfirm() {
     try {
         const res = await fetch(`${API_URL}/pay/confirm`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify({ order_id: currentOrderId })
         });
         const text = await res.text();
@@ -1988,7 +2025,7 @@ async function checkSubscription() {
         if (!currentUsername) return;
         const res = await fetch(`${API_URL}/subscription/status`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify({ username: currentUsername })
         });
         const data = await res.json();
@@ -2106,7 +2143,7 @@ async function planPath() {
     try {
         const res = await fetch(`${API_URL}/plan`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
             body: JSON.stringify(data)
         });
         

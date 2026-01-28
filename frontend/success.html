@@ -25,24 +25,28 @@
 <body>
   <div class="card">
     <h1>订阅结果</h1>
-    <div class="desc">页面已尝试自动确认您的订单。如未成功，可手动输入订单号重试。</div>
-    <div id="status" class="log">正在确认订阅…</div>
+    <div class="desc">支付成功，系统将为您开通订阅权限。如未自动开通，可手动输入订单号重试。</div>
+    <div id="status" class="log"><span class="ok">✔ 支付成功</span>，正在为您开通订阅…</div>
     <div class="row">
       <input id="order-id-input" placeholder="输入订单号(如 Creem 返回的 id)">
       <button class="btn" id="btn-confirm">手动确认</button>
     </div>
     <div class="actions">
-      <a class="btn" href="/">返回首页</a>
+      <a class="btn" id="btn-back-sub" href="/">返回订阅界面</a>
       <button class="btn" id="btn-set-api">配置后端地址</button>
     </div>
   </div>
   <script>
+    const urlParams = new URLSearchParams(location.search);
     const savedApiUrl = localStorage.getItem('api_url');
     const defaultApiUrl = "http://127.0.0.1:8080/api";
-    let API_URL = savedApiUrl || defaultApiUrl;
+    let API_URL = urlParams.get('api') || savedApiUrl || defaultApiUrl;
     if (API_URL) {
       API_URL = API_URL.replace(/\/+$/, "");
       if (!API_URL.endsWith("/api")) API_URL = API_URL + "/api";
+    }
+    if (urlParams.get('api')) {
+      localStorage.setItem('api_url', API_URL);
     }
     function getOrderIdFromLocation() {
       const p = new URLSearchParams(location.search);
@@ -55,7 +59,7 @@
       try {
         const res = await fetch(API_URL + "/pay/confirm", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "1" },
           body: JSON.stringify({ order_id: orderId })
         });
         const text = await res.text();
@@ -64,6 +68,7 @@
         if (data.status === "success") {
           const exp = data.expiry ? ("，有效期至 " + data.expiry) : "";
           box.innerHTML = "<span class='ok'>✔ 订阅已开通</span>" + exp;
+          try { localStorage.setItem("subscription_just_activated", "1"); } catch (e) {}
         } else {
           box.innerHTML = "<span class='warn'>✖ 未完成支付或订单不存在</span>";
         }
@@ -90,6 +95,19 @@
         try { id = localStorage.getItem("last_order_id") || ""; } catch (e) {}
       }
       confirmOrder(id);
+    })();
+    (function setupBackLink(){
+      var back = document.getElementById("btn-back-sub");
+      if (back) {
+        var base = "/?tab=pay";
+        var u = new URL(location.href);
+        var api = u.searchParams.get("api");
+        if (api) {
+          back.href = "/?tab=pay&api=" + encodeURIComponent(api);
+        } else {
+          back.href = base;
+        }
+      }
     })();
   </script>
 </body>

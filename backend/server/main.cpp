@@ -41,7 +41,10 @@ using namespace std;
 #define DEFAULT_CREEM_PRODUCT_ID "prod_1GpSynkTY2fZb57S1RLhcd"
 #endif
 #ifndef DEFAULT_SUCCESS_URL
-#define DEFAULT_SUCCESS_URL "https://fzfw.vercel.app/success"
+#define DEFAULT_SUCCESS_URL "https://fzfw.vercel.app/success.html"
+#endif
+#ifndef DEFAULT_PUBLIC_SUCCESS_URL
+#define DEFAULT_PUBLIC_SUCCESS_URL "https://fw-tawny.vercel.app/success.html"
 #endif
 #ifndef DEFAULT_CREEM_API_KEY
 #define DEFAULT_CREEM_API_KEY "creem_test_7OKhgFBabtLK7SUsJOunY7"
@@ -219,19 +222,22 @@ std::string http_post_json_custom(const std::string& host_str, int port, bool ht
     std::wstring headers = widen(headers_str);
     std::string resp;
     HINTERNET hSession = WinHttpOpen(L"Svc", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) { return resp; }
+    if (!hSession) { return "{\"error\":{\"message\":\"WinHttpOpen failed\"}}"; }
     DWORD protocols = 0x00000800;
     WinHttpSetOption(hSession, 134, &protocols, sizeof(protocols));
     HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), (INTERNET_PORT)port, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return resp; }
+    if (!hConnect) { WinHttpCloseHandle(hSession); return "{\"error\":{\"message\":\"WinHttpConnect failed\"}}"; }
     DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
     HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", path.c_str(), NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return resp; }
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return "{\"error\":{\"message\":\"WinHttpOpenRequest failed\"}}"; }
     if (https) {
         DWORD dwFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
         WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
     }
     BOOL ok = WinHttpSendRequest(hRequest, headers.c_str(), (DWORD)headers.size(), (LPVOID)body.data(), (DWORD)body.size(), (DWORD)body.size(), 0);
+    if (!ok) {
+        resp = "{\"error\":{\"message\":\"WinHttpSendRequest failed: " + std::to_string(GetLastError()) + "\"}}";
+    }
     if (ok) ok = WinHttpReceiveResponse(hRequest, NULL);
     if (ok) {
         for (;;) {
@@ -416,6 +422,53 @@ static std::string trim(const std::string& s) {
     return s.substr(i, j - i);
 }
 
+static bool starts_with_https(const std::string& s) {
+    return s.size() >= 8 && s[0] == 'h' && s[1] == 't' && s[2] == 't' && s[3] == 'p' && s[4] == 's' && s[5] == ':' && s[6] == '/' && s[7] == '/';
+}
+
+static std::string to_lower(const std::string& s) {
+    std::string o(s);
+    for (size_t i = 0; i < o.size(); ++i) {
+        unsigned char c = (unsigned char)o[i];
+        if (c >= 'A' && c <= 'Z') o[i] = (char)(c - 'A' + 'a');
+    }
+    return o;
+}
+
+static std::string append_param(const std::string& url, const std::string& key, const std::string& value) {
+    if (url.find('?') == std::string::npos) return url + "?" + key + "=" + value;
+    return url + "&" + key + "=" + value;
+}
+
+static std::string decode_chunked(const std::string& s, size_t start_pos) {
+    std::string out;
+    size_t i = start_pos;
+    for (;;) {
+        size_t line_end = s.find("\r\n", i);
+        if (line_end == std::string::npos) break;
+        std::string hexlen = s.substr(i, line_end - i);
+        size_t n = 0;
+        for (char ch : hexlen) {
+            if (ch >= '0' && ch <= '9') { n = (n << 4) + (size_t)(ch - '0'); }
+            else if (ch >= 'a' && ch <= 'f') { n = (n << 4) + 10 + (size_t)(ch - 'a'); }
+            else if (ch >= 'A' && ch <= 'F') { n = (n << 4) + 10 + (size_t)(ch - 'A'); }
+            else { }
+        }
+        i = line_end + 2;
+        if (n == 0) {
+            break;
+        }
+        if (i + n > s.size()) break;
+        out.append(s.data() + i, s.data() + i + n);
+        i += n;
+        if (i + 2 <= s.size() && s.substr(i, 2) == "\r\n") i += 2;
+    }
+    return out;
+}
+static bool is_fallback_order_id(const std::string& s) {
+    return s.size() >= 4 && s[0] == 'O' && s[1] == 'R' && s[2] == 'D' && s[3] == '_';
+}
+
 static std::string read_file_simple(const std::wstring& wpath) {
     std::string out;
 #ifdef _WIN32
@@ -485,9 +538,12 @@ public:
         std::string order_id = idss.str();
         order_status[order_id] = "pending";
         order_user[order_id] = username;
-        std::stringstream urlss;
-        urlss << "creem://pay?order_id=" << order_id << "&amount=" << amount << "&subject=" << escape_json(subject);
-        pay_url = urlss.str();
+        const char* pr = std::getenv("PUBLIC_SUCCESS_URL");
+        std::string success_url = pr ? std::string(pr) : std::string(DEFAULT_PUBLIC_SUCCESS_URL);
+        success_url = append_param(success_url, "id", order_id);
+        const char* pubapi = std::getenv("PUBLIC_API_URL");
+        if (pubapi && *pubapi) success_url = append_param(success_url, "api", std::string(pubapi));
+        pay_url = success_url;
         return order_id;
     }
     std::string get_status(const std::string& order_id) {
@@ -1070,10 +1126,18 @@ std::string handle_request(const std::string& method, const std::string& path, c
                            UserManager& userMgr, PathPlanner& planner, PaymentManager& payMgr, SubscriptionManager& subsMgr) {
     
     // CORS headers for local development
-    std::string cors = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n";
+    std::string cors = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning, Authorization\r\nConnection: close\r\n";
 
     if (method == "OPTIONS") {
         return "HTTP/1.1 200 OK\r\n" + cors + "\r\n";
+    }
+
+    // Health check for connection testing
+    if (path == "/api" && method == "GET") {
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n{\"status\": \"ok\"}";
+    }
+    if (path == "/api/" && method == "GET") {
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n{\"status\": \"ok\"}";
     }
 
     if (path == "/api/login" && method == "POST") {
@@ -1108,10 +1172,14 @@ std::string handle_request(const std::string& method, const std::string& path, c
         parse_double(body, "\"amount\"", amount);
         std::string subject = "";
         parse_string(body, "\"subject\"", subject);
+        if (amount <= 0.0) amount = 9.9;
+        if (subject.empty()) subject = "20";
         std::string provider = "";
         parse_string(body, "\"provider\"", provider);
         std::string username = "";
         parse_string(body, "\"username\"", username);
+        std::string creem_res = "";
+        std::string creem_err = "";
         if (amount <= 0.0 || subject.empty()) {
             return "HTTP/1.1 400 Bad Request\r\n" + cors + "Content-Type: text/plain\r\n\r\nBad Request";
         }
@@ -1127,13 +1195,34 @@ std::string handle_request(const std::string& method, const std::string& path, c
                 product_id = std::string(DEFAULT_CREEM_PRODUCT_ID);
             }
             std::string success_url = "";
+            const char* pr = std::getenv("PUBLIC_SUCCESS_URL");
+            std::string pub_success = pr ? std::string(pr) : std::string(DEFAULT_PUBLIC_SUCCESS_URL);
             const char* s = std::getenv("CREEM_SUCCESS_URL");
-            success_url = s ? std::string(s) : std::string(DEFAULT_SUCCESS_URL);
+            success_url = s ? std::string(s) : pub_success;
+            std::string return_url = pub_success;
+            const char* pubapi = std::getenv("PUBLIC_API_URL");
+            if (pubapi && *pubapi) {
+                std::string a = std::string(pubapi);
+                if (success_url.find('?') == std::string::npos) success_url += "?api=" + a;
+                else success_url += "&api=" + a;
+                if (return_url.find('?') == std::string::npos) return_url += "?api=" + a;
+                else return_url += "&api=" + a;
+            }
             if (!api_key.empty() && !product_id.empty()) {
                 std::stringstream payload;
-                payload << "{\"product_id\":\"" << escape_json(product_id) << "\",\"success_url\":\"" << escape_json(success_url) << "\",\"metadata\":{\"userId\":\"" << escape_json(username) << "\"}}";
-                std::string headers = "Content-Type: application/json\r\nx-api-key: " + api_key + "\r\n";
+                payload << "{\"product_id\":\"" << escape_json(product_id) << "\"";
+                if (starts_with_https(success_url)) {
+                    payload << ",\"success_url\":\"" << escape_json(success_url) << "\"";
+                }
+                // Creem API v1 does not support return_url in checkout creation
+                // if (starts_with_https(return_url)) {
+                //    payload << ",\"return_url\":\"" << escape_json(return_url) << "\"";
+                // }
+                payload << ",\"metadata\":{\"userId\":\"" << escape_json(username) << "\"}}";
+                std::string headers = "Content-Type: application/json\r\nX-Api-Key: " + api_key + "\r\n";
                 std::string res = http_post_json_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts", headers, payload.str());
+                creem_res = res;
+                parse_string(res, "\"message\"", creem_err);
                 std::string pay_url = "";
                 std::string order_id = "";
                 parse_string(res, "\"checkout_url\"", pay_url);
@@ -1150,7 +1239,13 @@ std::string handle_request(const std::string& method, const std::string& path, c
         std::string pay_url;
         std::string order_id = payMgr.create_order(amount, subject, provider, username, pay_url);
         std::stringstream ss;
-        ss << "{\"order_id\": \"" << order_id << "\", \"payment_url\": \"" << escape_json(pay_url) << "\", \"status\": \"pending\"}";
+        ss << "{\"order_id\": \"" << order_id << "\", \"payment_url\": \"" << escape_json(pay_url) << "\", \"status\": \"pending\"";
+        if (!creem_err.empty()) ss << ", \"provider_error\": \"" << escape_json(creem_err) << "\"";
+        if (!creem_res.empty()) {
+            std::string raw = creem_res.size() > 600 ? creem_res.substr(0, 600) : creem_res;
+            ss << ", \"provider_raw\": \"" << escape_json(raw) << "\"";
+        }
+        ss << "}";
         return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + ss.str();
     }
     if (path == "/api/pay/status" && method == "POST") {
@@ -1158,7 +1253,7 @@ std::string handle_request(const std::string& method, const std::string& path, c
         parse_string(body, "\"order_id\"", order_id);
         std::string st = payMgr.get_status(order_id);
         std::string api_key = get_creem_api_key_runtime();
-        if (!api_key.empty() && !order_id.empty()) {
+        if (!api_key.empty() && !order_id.empty() && !is_fallback_order_id(order_id)) {
             std::string headers = "x-api-key: " + api_key + "\r\n";
             std::string res = http_get_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts?id=" + order_id, headers);
             std::string st2 = "";
@@ -1174,7 +1269,7 @@ std::string handle_request(const std::string& method, const std::string& path, c
         parse_string(body, "\"order_id\"", order_id);
         bool ok = false;
         std::string api_key = get_creem_api_key_runtime();
-        if (!api_key.empty() && !order_id.empty()) {
+        if (!api_key.empty() && !order_id.empty() && !is_fallback_order_id(order_id)) {
             std::string headers = "x-api-key: " + api_key + "\r\n";
             std::string res = http_get_custom(DEFAULT_CREEM_HOST, 443, true, "/v1/checkouts?id=" + order_id, headers);
             std::string st2 = "";
@@ -1343,6 +1438,30 @@ std::string handle_request(const std::string& method, const std::string& path, c
         return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: application/json\r\n\r\n" + res;
     }
     
+    if ((path == "/success" || path == "/success.html") && method == "GET") {
+        std::string html =
+            "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            "<title>订阅结果</title></head><body>"
+            "<div id=\"status\" style=\"font-family:Consolas,monospace;white-space:pre-wrap\">正在确认订阅…</div>"
+            "<script>"
+            "function q(n){var p=new URLSearchParams(location.search);return p.get(n)||\"\";}"
+            "async function confirm(){"
+            " var id=q('id')||q('order_id')||q('checkout_id');"
+            " var box=document.getElementById('status');"
+            " if(!id){box.textContent='未找到订单号，请返回后重试。';return;}"
+            " try{"
+            "  var r=await fetch('/api/pay/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:id})});"
+            "  var t=await r.text();"
+            "  var d={};"
+            "  try{d=JSON.parse(t);}catch(e){box.textContent='返回数据不是有效JSON: '+t.slice(0,200);return;}"
+            "  if(d.status==='success'){box.textContent='✔ 订阅已开通'+(d.expiry?('，有效期至 '+d.expiry):'');} else {box.textContent='✖ 未完成支付或订单不存在';}"
+            " }catch(e){box.textContent='确认失败: '+e.message;}"
+            "}"
+            "confirm();"
+            "</script></body></html>";
+        return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: text/html\r\n\r\n" + html;
+    }
+    
     if (method == "GET") {
         return "HTTP/1.1 200 OK\r\n" + cors + "Content-Type: text/plain\r\n\r\nService is running. Use frontend to interact.";
     }
@@ -1402,6 +1521,7 @@ int main() {
         std::string request;
         std::vector<char> buffer(8192);
         int content_length = -1;
+        bool is_chunked = false;
         
         while (true) {
             int bytes = recv(new_socket, buffer.data(), buffer.size(), 0);
@@ -1424,10 +1544,16 @@ int main() {
                             } catch(...) {}
                         }
                     }
+                    std::string hdr = to_lower(request.substr(0, header_end));
+                    if (hdr.find("transfer-encoding: chunked") != std::string::npos) {
+                        is_chunked = true;
+                    }
                 }
                 
-                if (request.size() >= header_end + 4 + content_length) {
-                    break;
+                if (is_chunked) {
+                    if (request.find("\r\n0\r\n\r\n", header_end + 4) != std::string::npos) break;
+                } else {
+                    if (request.size() >= header_end + 4 + content_length) break;
                 }
             }
         }
@@ -1444,7 +1570,11 @@ int main() {
         std::string body = "";
         size_t body_pos = request.find("\r\n\r\n");
         if (body_pos != std::string::npos) {
-            body = request.substr(body_pos + 4);
+            if (is_chunked) {
+                body = decode_chunked(request, body_pos + 4);
+            } else {
+                body = request.substr(body_pos + 4);
+            }
         }
 
         size_t header_end2 = request.find("\r\n\r\n");
