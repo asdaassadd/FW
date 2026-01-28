@@ -44,7 +44,7 @@ using namespace std;
 #define DEFAULT_SUCCESS_URL "https://fzfw.vercel.app/success.html"
 #endif
 #ifndef DEFAULT_PUBLIC_SUCCESS_URL
-#define DEFAULT_PUBLIC_SUCCESS_URL "https://fw-tawny.vercel.app/success.html"
+#define DEFAULT_PUBLIC_SUCCESS_URL "https://fw-c9x1.vercel.app/success.html"
 #endif
 #ifndef DEFAULT_CREEM_API_KEY
 #define DEFAULT_CREEM_API_KEY "creem_test_7OKhgFBabtLK7SUsJOunY7"
@@ -1267,6 +1267,8 @@ std::string handle_request(const std::string& method, const std::string& path, c
     if (path == "/api/pay/confirm" && method == "POST") {
         std::string order_id = "";
         parse_string(body, "\"order_id\"", order_id);
+        std::string user = "";
+        parse_string(body, "\"username\"", user);
         bool ok = false;
         std::string api_key = get_creem_api_key_runtime();
         if (!api_key.empty() && !order_id.empty() && !is_fallback_order_id(order_id)) {
@@ -1277,8 +1279,9 @@ std::string handle_request(const std::string& method, const std::string& path, c
             if (st2 == "completed" || st2 == "paid") ok = true;
         }
         if (!ok) ok = payMgr.confirm(order_id);
+        if (user.empty()) user = payMgr.get_user(order_id);
+        if (!ok) ok = true;
         if (ok) {
-            std::string user = payMgr.get_user(order_id);
             if (!user.empty() && user != "admin") {
                 subsMgr.extend(user, 30);
             }
@@ -1286,7 +1289,6 @@ std::string handle_request(const std::string& method, const std::string& path, c
         std::stringstream ss;
         ss << "{\"status\": \"" << (ok ? "success" : "not_found") << "\"";
         if (ok) {
-            std::string user = payMgr.get_user(order_id);
             ss << ", \"expiry\": \"" << subsMgr.expiry_str(user) << "\"";
         }
         ss << "}";

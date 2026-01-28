@@ -18,17 +18,33 @@ if (API_URL) {
 if (urlParams.get('api')) {
     localStorage.setItem('api_url', API_URL);
 }
-const initialTab = urlParams.get('tab');
-if (initialTab) {
-    try { switchTab(initialTab); } catch (e) {}
-}
-try {
-    const just = localStorage.getItem('subscription_just_activated');
-    if (just === '1') {
-        localStorage.removeItem('subscription_just_activated');
-        try { checkSubscription(); } catch (e) {}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const initialTab = urlParams.get('tab');
+    if (initialTab) {
+        try { switchTab(initialTab); } catch (e) {}
     }
-} catch (e) {}
+    try {
+        const just = localStorage.getItem('subscription_just_activated');
+        if (just === '1') {
+            localStorage.removeItem('subscription_just_activated');
+            try { checkSubscription(); } catch (e) {}
+        }
+    } catch (e) {}
+    try {
+        const savedUser = localStorage.getItem('username');
+        const savedToken = localStorage.getItem('token');
+        if (savedUser) {
+            currentUsername = savedUser;
+            try { document.getElementById('btn-login').style.display = 'none'; } catch (e) {}
+            setTimeout(() => {
+                try { showSection('service'); } catch (e) {}
+                try { if (initialTab) switchTab(initialTab); } catch (e) {}
+                try { checkSubscription(); } catch (e) {}
+            }, 0);
+        }
+    } catch (e) {}
+});
 
 // Helper to update API URL from console or UI
 window.setApiUrl = function(url) {
@@ -1640,6 +1656,8 @@ async function login() {
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
             currentUsername = u;
+            try { localStorage.setItem('username', u); } catch (e) {}
+            try { localStorage.setItem('token', 'xyz_' + u); } catch (e) {}
             setTimeout(() => showSection('service'), 1000);
             setTimeout(() => checkSubscription(), 1200);
         } else {
@@ -1813,6 +1831,8 @@ async function doRegister() {
             const btn = document.getElementById('btn-login');
             if (btn) btn.style.display = 'none';
             currentUsername = u;
+            try { localStorage.setItem('username', u); } catch (e) {}
+            try { localStorage.setItem('token', 'xyz_' + u); } catch (e) {}
             setTimeout(() => showSection('service'), 1000);
             setTimeout(() => checkSubscription(), 1200);
         } else if (res.status === 409) {
@@ -2312,6 +2332,8 @@ async function googleLogin(token, email) {
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
             currentUsername = data.username || email || 'Google User';
+            try { localStorage.setItem('username', currentUsername); } catch (e) {}
+            try { localStorage.setItem('token', data.token || 'google_session_token'); } catch (e) {}
             setTimeout(() => showSection('service'), 1000);
             setTimeout(() => checkSubscription(), 1200);
         } else {

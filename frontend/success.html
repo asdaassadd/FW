@@ -57,10 +57,11 @@
       if (!orderId) { box.textContent = "未找到订单号，请输入后手动确认。"; return; }
       box.textContent = "正在向后端确认订单: " + orderId + " …";
       try {
+        const savedUser = (function(){ try { return localStorage.getItem('username') || ''; } catch(e) { return ''; } })();
         const res = await fetch(API_URL + "/pay/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "1" },
-          body: JSON.stringify({ order_id: orderId })
+          body: JSON.stringify({ order_id: orderId, username: savedUser })
         });
         const text = await res.text();
         let data = {};
@@ -69,6 +70,13 @@
           const exp = data.expiry ? ("，有效期至 " + data.expiry) : "";
           box.innerHTML = "<span class='ok'>✔ 订阅已开通</span>" + exp;
           try { localStorage.setItem("subscription_just_activated", "1"); } catch (e) {}
+          try {
+            var u = new URL(location.href);
+            var api = u.searchParams.get("api");
+            var target = "index.html?tab=pay";
+            if (api) target = "index.html?tab=pay&api=" + encodeURIComponent(api);
+            setTimeout(function(){ location.href = target; }, 1500);
+          } catch (e) {}
         } else {
           box.innerHTML = "<span class='warn'>✖ 未完成支付或订单不存在</span>";
         }
@@ -99,11 +107,11 @@
     (function setupBackLink(){
       var back = document.getElementById("btn-back-sub");
       if (back) {
-        var base = "/?tab=pay";
+        var base = "index.html?tab=pay";
         var u = new URL(location.href);
         var api = u.searchParams.get("api");
         if (api) {
-          back.href = "/?tab=pay&api=" + encodeURIComponent(api);
+          back.href = "index.html?tab=pay&api=" + encodeURIComponent(api);
         } else {
           back.href = base;
         }
