@@ -26,9 +26,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     try {
         const just = localStorage.getItem('subscription_just_activated');
-        if (just === '1') {
+        const justActivated = (just === '1');
+        const exp = localStorage.getItem('subscription_expiry') || '';
+        if (justActivated) {
+            try { updateSubscriptionUI(true, exp); } catch (e) {}
             localStorage.removeItem('subscription_just_activated');
-            try { checkSubscription(); } catch (e) {}
         }
     } catch (e) {}
     try {
@@ -37,10 +39,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (savedUser) {
             currentUsername = savedUser;
             try { document.getElementById('btn-login').style.display = 'none'; } catch (e) {}
+            try { document.getElementById('btn-logout').style.display = 'inline-block'; } catch (e) {}
             setTimeout(() => {
                 try { showSection('service'); } catch (e) {}
                 try { if (initialTab) switchTab(initialTab); } catch (e) {}
-                try { checkSubscription(); } catch (e) {}
+                try {
+                    const shouldCheck = (localStorage.getItem('subscription_just_activated') !== '1');
+                    if (shouldCheck) checkSubscription();
+                } catch (e) {}
             }, 0);
         }
     } catch (e) {}
@@ -60,6 +66,19 @@ window.promptSetApi = function() {
     if (u) window.setApiUrl(u);
 };
 
+function logout() {
+    try {
+        localStorage.removeItem('username');
+        localStorage.removeItem('token');
+        localStorage.removeItem('subscription_expiry');
+    } catch (e) {}
+    currentUsername = null;
+    if (payPollTimer) { try { clearInterval(payPollTimer); } catch (e) {} payPollTimer = null; }
+    try { updateSubscriptionUI(false, ''); } catch (e) {}
+    try { document.getElementById('btn-login').style.display = 'inline-block'; } catch (e) {}
+    try { document.getElementById('btn-logout').style.display = 'none'; } catch (e) {}
+    showSection('login');
+}
 // Auto-check connection on load
 (async function checkConnection() {
     try {
@@ -1655,6 +1674,7 @@ async function login() {
             
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
+            try { document.getElementById('btn-logout').style.display = 'inline-block'; } catch (e) {}
             currentUsername = u;
             try { localStorage.setItem('username', u); } catch (e) {}
             try { localStorage.setItem('token', 'xyz_' + u); } catch (e) {}
@@ -1830,6 +1850,7 @@ async function doRegister() {
             if (msgEl) msgEl.innerText = "注册成功! 已自动登录";
             const btn = document.getElementById('btn-login');
             if (btn) btn.style.display = 'none';
+            try { document.getElementById('btn-logout').style.display = 'inline-block'; } catch (e) {}
             currentUsername = u;
             try { localStorage.setItem('username', u); } catch (e) {}
             try { localStorage.setItem('token', 'xyz_' + u); } catch (e) {}
@@ -2331,6 +2352,7 @@ async function googleLogin(token, email) {
             
             // Hide Login button
             document.getElementById('btn-login').style.display = 'none';
+            try { document.getElementById('btn-logout').style.display = 'inline-block'; } catch (e) {}
             currentUsername = data.username || email || 'Google User';
             try { localStorage.setItem('username', currentUsername); } catch (e) {}
             try { localStorage.setItem('token', data.token || 'google_session_token'); } catch (e) {}

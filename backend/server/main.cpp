@@ -44,7 +44,7 @@ using namespace std;
 #define DEFAULT_SUCCESS_URL "https://fzfw.vercel.app/success.html"
 #endif
 #ifndef DEFAULT_PUBLIC_SUCCESS_URL
-#define DEFAULT_PUBLIC_SUCCESS_URL "https://fw-c9x1.vercel.app/success.html"
+#define DEFAULT_PUBLIC_SUCCESS_URL "https://fzghfw.vercel.app/success.html"
 #endif
 #ifndef DEFAULT_CREEM_API_KEY
 #define DEFAULT_CREEM_API_KEY "creem_test_7OKhgFBabtLK7SUsJOunY7"

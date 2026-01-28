@@ -70,6 +70,7 @@
           const exp = data.expiry ? ("，有效期至 " + data.expiry) : "";
           box.innerHTML = "<span class='ok'>✔ 订阅已开通</span>" + exp;
           try { localStorage.setItem("subscription_just_activated", "1"); } catch (e) {}
+          try { localStorage.setItem("subscription_expiry", data.expiry || ""); } catch (e) {}
           try {
             var u = new URL(location.href);
             var api = u.searchParams.get("api");
