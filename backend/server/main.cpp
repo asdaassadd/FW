@@ -435,6 +435,11 @@ static std::string to_lower(const std::string& s) {
     return o;
 }
 
+static bool is_ngrok_url(const std::string& s) {
+    std::string x = to_lower(s);
+    return x.find("ngrok") != std::string::npos;
+}
+
 static std::string append_param(const std::string& url, const std::string& key, const std::string& value) {
     if (url.find('?') == std::string::npos) return url + "?" + key + "=" + value;
     return url + "&" + key + "=" + value;
@@ -539,7 +544,7 @@ public:
         order_status[order_id] = "pending";
         order_user[order_id] = username;
         const char* pr = std::getenv("PUBLIC_SUCCESS_URL");
-        std::string success_url = pr ? std::string(pr) : std::string(DEFAULT_PUBLIC_SUCCESS_URL);
+        std::string success_url = (pr && !is_ngrok_url(pr)) ? std::string(pr) : std::string(DEFAULT_PUBLIC_SUCCESS_URL);
         success_url = append_param(success_url, "id", order_id);
         const char* pubapi = std::getenv("PUBLIC_API_URL");
         if (pubapi && *pubapi) success_url = append_param(success_url, "api", std::string(pubapi));
@@ -1196,9 +1201,10 @@ std::string handle_request(const std::string& method, const std::string& path, c
             }
             std::string success_url = "";
             const char* pr = std::getenv("PUBLIC_SUCCESS_URL");
-            std::string pub_success = pr ? std::string(pr) : std::string(DEFAULT_PUBLIC_SUCCESS_URL);
+            std::string pub_success = (!pr || is_ngrok_url(pr)) ? std::string(DEFAULT_PUBLIC_SUCCESS_URL) : std::string(pr);
             const char* s = std::getenv("CREEM_SUCCESS_URL");
-            success_url = s ? std::string(s) : pub_success;
+            std::string s_val = s ? std::string(s) : std::string();
+            success_url = (!s_val.empty() && !is_ngrok_url(s_val)) ? s_val : pub_success;
             std::string return_url = pub_success;
             const char* pubapi = std::getenv("PUBLIC_API_URL");
             if (pubapi && *pubapi) {

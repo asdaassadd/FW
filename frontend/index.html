@@ -183,7 +183,23 @@
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .nav { margin-bottom: 30px; display: flex; gap: 10px; }
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            margin: 0;
+        }
+        .nav { 
+            margin: 0; 
+            margin-left: auto;
+            display: flex; 
+            gap: 10px; 
+        }
         
         button { 
             padding: 10px 25px; 
@@ -838,12 +854,13 @@
 </head>
 <body> 
     <div class="container">
-        <h1>仿真规划服务</h1>
-        
-        <div class="nav">
-            <button onclick="showSection('login')" id="btn-login" style="display:none;">登录/注册</button>
-            <button onclick="logout()" id="btn-logout" style="display:none;">退出登录</button>
-        </div>
+        <header class="page-header">
+            <h1>仿真规划服务</h1>
+            <div class="nav">
+                <button onclick="showSection('login')" id="btn-login" style="display:none;">登录/注册</button>
+                <button onclick="logout()" id="btn-logout" style="display:none;">退出登录</button>
+            </div>
+        </header>
 
         <!-- Login Module -->
         <div id="login" class="section active">

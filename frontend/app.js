@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.removeItem('subscription_just_activated');
         }
     } catch (e) {}
+    /* 进入页面默认显示登录页，不自动使用本地保存的登录状态 */
     try {
         const savedUser = localStorage.getItem('username');
         const savedToken = localStorage.getItem('token');
@@ -40,14 +41,15 @@ document.addEventListener('DOMContentLoaded', function() {
             currentUsername = savedUser;
             try { document.getElementById('btn-login').style.display = 'none'; } catch (e) {}
             try { document.getElementById('btn-logout').style.display = 'inline-block'; } catch (e) {}
-            setTimeout(() => {
+            /* 支付成功返回带 tab=pay 时，直接进入订阅页 */
+            if (initialTab === 'pay') {
                 try { showSection('service'); } catch (e) {}
-                try { if (initialTab) switchTab(initialTab); } catch (e) {}
+                try { switchTab('pay'); } catch (e) {}
                 try {
                     const shouldCheck = (localStorage.getItem('subscription_just_activated') !== '1');
                     if (shouldCheck) checkSubscription();
                 } catch (e) {}
-            }, 0);
+            }
         }
     } catch (e) {}
 });
